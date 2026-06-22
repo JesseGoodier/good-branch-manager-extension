@@ -31,12 +31,24 @@ export interface CreatedPr {
   number: number;
 }
 
+/** REST API base URL for GitHub.com and GitHub Enterprise hosts. */
+export function githubApiBase(repo: RemoteRepo): string {
+  const h = repo.host.toLowerCase();
+  if (h === 'github.com') {
+    return 'https://api.github.com';
+  }
+  if (h.endsWith('.github.com')) {
+    return `https://api.${h}`;
+  }
+  return `https://${h}/api/v3`;
+}
+
 export async function createPullRequest(repo: RemoteRepo, input: CreatePrInput): Promise<CreatedPr> {
   const session = await getGitHubSession(true);
   if (!session) {
     throw new Error('GitHub sign-in is required to create a pull request.');
   }
-  const res = await fetch(`https://api.github.com/repos/${repo.owner}/${repo.repo}/pulls`, {
+  const res = await fetch(`${githubApiBase(repo)}/repos/${repo.owner}/${repo.repo}/pulls`, {
     method: 'POST',
     headers: {
       Authorization: `Bearer ${session.accessToken}`,
@@ -68,13 +80,18 @@ export async function createPullRequest(repo: RemoteRepo, input: CreatePrInput):
   return { htmlUrl: json.html_url, number: json.number };
 }
 
+/** Encode a branch/ref name for use in URL paths, preserving slash separators. */
+function encodeBranchRef(branch: string): string {
+  return branch.split('/').map(encodeURIComponent).join('/');
+}
+
 /**
  * Constructs the browser URL for a specific branch, routing by provider.
  * Returns undefined only for Azure DevOps HTTPS remotes where the org cannot be determined
  * (practically, always returns a string for the four named providers + generic fallback).
  */
 export function branchUrl(repo: RemoteRepo, branch: string): string {
-  const enc = encodeURIComponent(branch);
+  const enc = encodeBranchRef(branch);
   const base = `https://${repo.host}`;
 
   switch (repo.provider) {
@@ -99,7 +116,7 @@ export function branchUrl(repo: RemoteRepo, branch: string): string {
     }
 
     default:
-      // Generic self-hosted (Gitea, Forgejo, Gogs, etc.) all use the GitHub-style path.
+      // Gitea / Forgejo use /src/branch/; Gogs uses /src/ without the branch segment.
       return `${base}/${repo.owner}/${repo.repo}/src/branch/${enc}`;
   }
 }
@@ -149,7 +166,7 @@ export async function listPullRequests(repo: RemoteRepo): Promise<PullRequest[]>
     headers['Authorization'] = `Bearer ${session.accessToken}`;
   }
 
-  const res = await fetch(`https://api.github.com/repos/${repo.owner}/${repo.repo}/pulls?state=all&per_page=100`, {
+  const res = await fetch(`${githubApiBase(repo)}/repos/${repo.owner}/${repo.repo}/pulls?state=all&per_page=100`, {
     headers
   });
 

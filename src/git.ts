@@ -10,9 +10,15 @@ export interface RemoteRepo {
   provider: GitProvider;
 }
 
+/** GitHub.com, GitHub Enterprise Cloud (*.github.com), and common GHE Server hosts (github.*). */
+export function isGitHubHost(host: string): boolean {
+  const h = host.toLowerCase();
+  return h === 'github.com' || h.endsWith('.github.com') || h.startsWith('github.');
+}
+
 function detectProvider(host: string, path: string): GitProvider {
   const h = host.toLowerCase();
-  if (h === 'github.com' || h.endsWith('.github.com')) return 'github';
+  if (isGitHubHost(h)) return 'github';
   if (h === 'gitlab.com' || h.includes('gitlab')) return 'gitlab';
   if (h === 'bitbucket.org') return 'bitbucket';
   if (h === 'dev.azure.com' || h === 'ssh.dev.azure.com' || h.endsWith('.visualstudio.com')) return 'azure';
