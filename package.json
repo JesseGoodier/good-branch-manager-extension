@@ -81,6 +81,11 @@
       },
       {
         "category": "Branches",
+        "command": "goodBranchManager.openCommit",
+        "title": "Open Commit on GitHub"
+      },
+      {
+        "category": "Branches",
         "command": "goodBranchManager.openPullRequest",
         "title": "Open Pull Request on GitHub"
       }
@@ -170,6 +175,10 @@
         },
         {
           "command": "goodBranchManager.unsetUpstream",
+          "when": "false"
+        },
+        {
+          "command": "goodBranchManager.openCommit",
           "when": "false"
         },
         {

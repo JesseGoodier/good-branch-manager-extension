@@ -54,6 +54,15 @@ export interface RepoInfo {
   remote: Branch[];
 }
 
+export interface CommitEntry {
+  fullSha: string;
+  sha: string;
+  subject: string;
+  authorName: string;
+  committerDateUnix: number;
+  committerDateRelative: string;
+}
+
 export class GitError extends Error {
   constructor(message: string, public readonly stderr: string) {
     super(message);
@@ -227,6 +236,26 @@ export class Git {
   async getCommitSummaries(base: string, head: string, limit = 20): Promise<string[]> {
     const out = await this.tryExec(['log', `${base}..${head}`, '--pretty=%s', `-${limit}`]);
     return (out ?? '').split('\n').filter(Boolean);
+  }
+
+  async getBranchCommits(ref: string, limit = 30): Promise<CommitEntry[]> {
+    const format = ['%H', '%h', '%s', '%an', '%cr', '%ct'].join(NUL);
+    const raw = await this.tryExec(['log', ref, `--format=${format}`, `-${limit}`]);
+    if (!raw) return [];
+    return raw
+      .split('\n')
+      .filter(Boolean)
+      .map((line) => {
+        const [fullSha, sha, subject, authorName, committerDateRelative, committerDateUnix] = line.split(NUL);
+        return {
+          fullSha,
+          sha,
+          subject,
+          authorName,
+          committerDateRelative,
+          committerDateUnix: Number(committerDateUnix)
+        };
+      });
   }
 }
 

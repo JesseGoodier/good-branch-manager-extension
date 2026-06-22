@@ -1,8 +1,8 @@
 import * as vscode from 'vscode';
-import { Branch, Git, RemoteRepo, RepoInfo, findRepoRoot } from './git';
+import { Branch, CommitEntry, Git, RemoteRepo, RepoInfo, findRepoRoot } from './git';
 import { PullRequest, branchUrl, commitUrl, listPullRequests, resolveRemoteRepo } from './github';
 
-type Node = GroupNode | BranchNode;
+type Node = GroupNode | BranchNode | CommitNode | LoadingNode;
 
 export class GroupNode {
   constructor(public readonly kind: 'local' | 'remote', public readonly branches: Branch[]) {}
@@ -12,25 +12,48 @@ export class BranchNode {
   constructor(public readonly branch: Branch, public readonly repo: RepoInfo) {}
 }
 
+export class CommitNode {
+  constructor(
+    public readonly commit: CommitEntry,
+    public readonly branch: Branch,
+    public readonly repo: RepoInfo
+  ) {}
+}
+
+class LoadingNode {
+  constructor(public readonly message: string) {}
+}
+
 export class BranchTreeProvider implements vscode.TreeDataProvider<Node> {
   private readonly _onDidChangeTreeData = new vscode.EventEmitter<void>();
   readonly onDidChangeTreeData = this._onDidChangeTreeData.event;
 
   private repoInfo: RepoInfo | undefined;
   private git: Git | undefined;
+  private rootNodes: Node[] = [];
   private prMap = new Map<string, PullRequest>();
   private remoteRepos = new Map<string, RemoteRepo>();
+  private commitCache = new Map<string, CommitNode[]>();
   private lastFetchTime = 0;
   private fetchPromise: Promise<void> | null = null;
   private isForceRefresh = false;
+  private loadPromise: Promise<void> | null = null;
+  private isLoading = false;
 
   getPullRequest(branchName: string): PullRequest | undefined {
     return this.prMap.get(branchName);
   }
 
+  /** Start loading branch data immediately — call from activate before the view renders. */
+  prefetch(): void {
+    void this.ensureLoaded();
+  }
+
   refresh(): void {
     this.isForceRefresh = true;
-    this._onDidChangeTreeData.fire();
+    this.commitCache.clear();
+    this.loadPromise = null;
+    void this.ensureLoaded(true);
   }
 
   getGit(): Git | undefined {
@@ -46,44 +69,103 @@ export class BranchTreeProvider implements vscode.TreeDataProvider<Node> {
       return element.branches.map((b) => new BranchNode(b, this.repoInfo!));
     }
     if (element instanceof BranchNode) {
+      return this.getBranchCommits(element);
+    }
+    if (element instanceof CommitNode || element instanceof LoadingNode) {
       return [];
     }
 
+    void this.ensureLoaded();
+    if (this.isLoading && this.rootNodes.length === 0) {
+      return [new LoadingNode('Loading branches…')];
+    }
+    return this.rootNodes;
+  }
+
+  private async ensureLoaded(force = false): Promise<void> {
+    if (this.loadPromise && !force) {
+      return this.loadPromise;
+    }
+    this.isLoading = true;
+    if (force || this.rootNodes.length === 0) {
+      this._onDidChangeTreeData.fire();
+    }
+    this.loadPromise = this.loadRootNodes(force).finally(() => {
+      this.isLoading = false;
+      this.loadPromise = null;
+    });
+    return this.loadPromise;
+  }
+
+  private async loadRootNodes(force: boolean): Promise<void> {
     const root = await findRepoRoot();
     if (!root) {
       this.git = undefined;
       this.repoInfo = undefined;
+      this.rootNodes = [];
       this.prMap.clear();
       this.remoteRepos.clear();
-      return [];
+      this._onDidChangeTreeData.fire();
+      return;
     }
+
     this.git = new Git(root);
     try {
       this.repoInfo = await this.git.getBranches();
       await this.refreshRemoteRepos(this.git);
     } catch (err) {
       console.error('goodBranchManager: failed to list branches', err);
-      return [];
+      this.rootNodes = [];
+      this._onDidChangeTreeData.fire();
+      return;
     }
-
-    this.triggerPrFetch(this.git);
 
     const scope = vscode.workspace.getConfiguration('goodBranchManager').get<string>('branchScope', 'both');
     if (scope === 'local' || this.repoInfo.remote.length === 0) {
-      return this.repoInfo.local.map((b) => new BranchNode(b, this.repoInfo!));
+      this.rootNodes = this.repoInfo.local.map((b) => new BranchNode(b, this.repoInfo!));
+    } else {
+      this.rootNodes = [
+        new GroupNode('local', this.repoInfo.local),
+        new GroupNode('remote', this.repoInfo.remote)
+      ];
     }
-    return [new GroupNode('local', this.repoInfo.local), new GroupNode('remote', this.repoInfo.remote)];
+
+    this._onDidChangeTreeData.fire();
+    this.triggerPrFetch(this.git, force);
   }
 
-  private async triggerPrFetch(git: Git): Promise<void> {
+  private async getBranchCommits(node: BranchNode): Promise<CommitNode[]> {
+    const key = node.branch.name;
+    const cached = this.commitCache.get(key);
+    if (cached) {
+      return cached;
+    }
+
+    const git = this.git;
+    if (!git) {
+      return [];
+    }
+
+    try {
+      const commits = await git.getBranchCommits(node.branch.name);
+      const items = commits.map((commit) => new CommitNode(commit, node.branch, node.repo));
+      this.commitCache.set(key, items);
+      return items;
+    } catch (err) {
+      console.error('goodBranchManager: failed to list commits', err);
+      return [];
+    }
+  }
+
+  private async triggerPrFetch(git: Git, force: boolean): Promise<void> {
     const showPrStatus = vscode.workspace.getConfiguration('goodBranchManager').get<boolean>('showPrStatus', true);
     if (!showPrStatus) {
       return;
     }
 
     const now = Date.now();
-    const throttleMs = 30000; // 30 seconds throttle
-    if (!this.isForceRefresh && now - this.lastFetchTime < throttleMs) {
+    const throttleMs = 30000;
+    if (!force && !this.isForceRefresh && now - this.lastFetchTime < throttleMs) {
       return;
     }
     if (this.fetchPromise) {
@@ -131,6 +213,11 @@ export class BranchTreeProvider implements vscode.TreeDataProvider<Node> {
   }
 
   getTreeItem(element: Node): vscode.TreeItem {
+    if (element instanceof LoadingNode) {
+      const item = new vscode.TreeItem(element.message, vscode.TreeItemCollapsibleState.None);
+      item.iconPath = new vscode.ThemeIcon('loading~spin');
+      return item;
+    }
     if (element instanceof GroupNode) {
       const item = new vscode.TreeItem(
         element.kind === 'local' ? 'Local' : 'Remote',
@@ -142,12 +229,18 @@ export class BranchTreeProvider implements vscode.TreeDataProvider<Node> {
       item.iconPath = new vscode.ThemeIcon(element.kind === 'local' ? 'device-desktop' : 'cloud');
       return item;
     }
+    if (element instanceof CommitNode) {
+      return this.commitItem(element);
+    }
     return this.branchItem(element);
   }
 
   private branchItem(node: BranchNode): vscode.TreeItem {
     const b = node.branch;
-    const item = new vscode.TreeItem(b.isRemote ? b.shortName : b.name);
+    const item = new vscode.TreeItem(
+      b.isRemote ? b.shortName : b.name,
+      vscode.TreeItemCollapsibleState.Collapsed
+    );
     item.id = (b.isRemote ? 'remote:' : 'local:') + b.name;
 
     const staleDays = vscode.workspace.getConfiguration('goodBranchManager').get<number>('staleAfterDays', 30);
@@ -216,13 +309,32 @@ export class BranchTreeProvider implements vscode.TreeDataProvider<Node> {
     if (pr) ctx.push('has-pr');
     item.contextValue = ctx.join('-');
 
-    if (!b.isCurrent) {
+    return item;
+  }
+
+  private commitItem(node: CommitNode): vscode.TreeItem {
+    const c = node.commit;
+    const item = new vscode.TreeItem(c.subject, vscode.TreeItemCollapsibleState.None);
+    item.id = `commit:${node.branch.name}:${c.fullSha}`;
+    item.description = `${c.sha} · ${c.authorName} · ${c.committerDateRelative}`;
+    item.iconPath = new vscode.ThemeIcon('git-commit');
+
+    const linkedSha = this.linkedCommitSha(node.branch, c.fullSha, c.sha);
+    item.tooltip = new vscode.MarkdownString(
+      [`**${escapeMarkdown(c.subject)}**`, '', `${linkedSha} · ${c.committerDateRelative}`, `Author: ${escapeMarkdown(c.authorName)}`].join('\n\n')
+    );
+    item.tooltip.isTrusted = true;
+    item.contextValue = 'commit';
+
+    const remoteRepo = this.remoteRepoForBranch(node.branch);
+    if (remoteRepo) {
       item.command = {
-        command: 'goodBranchManager.checkout',
-        title: 'Checkout Branch',
+        command: 'goodBranchManager.openCommit',
+        title: 'Open Commit',
         arguments: [node]
       };
     }
+
     return item;
   }
 
@@ -324,6 +436,15 @@ export class BranchTreeProvider implements vscode.TreeDataProvider<Node> {
     return `[${label}](${commitUrl(repo, branch.fullSha || branch.sha)})`;
   }
 
+  private linkedCommitSha(branch: Branch, fullSha: string, shortSha: string): string {
+    const repo = this.remoteRepoForBranch(branch);
+    const label = escapeMarkdown(shortSha);
+    if (!repo) {
+      return `\`${label}\``;
+    }
+    return `[${label}](${commitUrl(repo, fullSha)})`;
+  }
+
   private linkedUpstream(upstream: string): string {
     const { remote, branch } = splitRemoteBranch(upstream);
     const label = escapeMarkdown(upstream);
@@ -341,7 +462,7 @@ export class BranchTreeProvider implements vscode.TreeDataProvider<Node> {
     if (branch.remote) {
       return this.remoteRepos.get(branch.remote);
     }
-    return undefined;
+    return this.remoteRepos.get('origin');
   }
 }
 

@@ -1,8 +1,8 @@
 import * as vscode from 'vscode';
 import { Branch, Git, GitError, RepoInfo } from './git';
-import { branchUrl, resolveGitHubRepo, resolveRemoteRepo } from './github';
+import { branchUrl, commitUrl, resolveGitHubRepo, resolveRemoteRepo } from './github';
 import { openCreatePrPanel } from './prPanel';
-import { BranchNode, BranchTreeProvider } from './tree';
+import { BranchNode, BranchTreeProvider, CommitNode } from './tree';
 
 const BRANCH_NAME_RE = /^(?!\/|.*(?:\/\.|\/\/|\.\.|@\{|\\))[^\x00-\x20~^:?*[\]]+(?<!\.lock)(?<!\/)(?<!\.)$/;
 const PUBLISH_PROMPT_SETTING = 'goodBranchManager.promptForPrOnPublish';
@@ -14,6 +14,7 @@ interface BranchSnapshot {
 
 export async function activate(context: vscode.ExtensionContext): Promise<void> {
   const tree = new BranchTreeProvider();
+  tree.prefetch();
   const view = vscode.window.createTreeView('goodBranchManager.branches', {
     treeDataProvider: tree,
     showCollapseAll: false
@@ -146,6 +147,18 @@ export async function activate(context: vscode.ExtensionContext): Promise<void> 
       : node.branch.upstream?.replace(/^[^/]+\//, '') ?? node.branch.name;
     await vscode.env.openExternal(vscode.Uri.parse(branchUrl(repo, remoteBranch)));
   });
+
+  context.subscriptions.push(
+    vscode.commands.registerCommand('goodBranchManager.openCommit', async (node?: CommitNode) => {
+      if (!(node instanceof CommitNode)) return;
+      const git = tree.getGit();
+      if (!git) return;
+      const remote = node.branch.remote ?? node.branch.upstream?.split('/')[0] ?? 'origin';
+      const repo = await resolveRemoteRepo(git, remote);
+      if (!repo) return;
+      await vscode.env.openExternal(vscode.Uri.parse(commitUrl(repo, node.commit.fullSha)));
+    })
+  );
 
   register('goodBranchManager.renameBranch', async (node) => {
     const git = requireGit(tree);
