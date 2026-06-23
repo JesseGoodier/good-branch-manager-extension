@@ -20,7 +20,7 @@ suite('package.json contributions', () => {
     for (const id of [
       'goodBranchManager.checkout',
       'goodBranchManager.createPullRequest',
-      'goodBranchManager.pullBranch',
+      'goodBranchManager.pullDefault',
       'goodBranchManager.refresh'
     ]) {
       assert.ok(commands.has(id), `missing command ${id}`);
@@ -34,7 +34,7 @@ suite('package.json contributions', () => {
         .map((entry) => entry.command)
     );
     assert.ok(hidden.has('goodBranchManager.checkout'));
-    assert.ok(hidden.has('goodBranchManager.pullBranch'));
+    assert.ok(hidden.has('goodBranchManager.pullDefault'));
   });
 
   test('scopes context menu items to the branches view', () => {

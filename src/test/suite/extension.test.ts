@@ -15,6 +15,6 @@ suite('Extension integration', () => {
     const commands = await vscode.commands.getCommands(true);
     assert.ok(commands.includes('goodBranchManager.refresh'));
     assert.ok(commands.includes('goodBranchManager.checkout'));
-    assert.ok(commands.includes('goodBranchManager.pullBranch'));
+    assert.ok(commands.includes('goodBranchManager.pullDefault'));
   });
 });
