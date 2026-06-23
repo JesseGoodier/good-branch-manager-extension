@@ -1,6 +1,6 @@
 {
   "name": "good-branch-manager",
-  "version": "0.2.0",
+  "version": "0.2.1",
   "description": "Simple git branch view: sync status at a glance, branch actions, and GitHub pull requests from the Source Control sidebar.",
   "homepage": "https://github.com/JesseGoodier/good-branch-manager-extension#readme",
   "publisher": "JesseGoodier",
@@ -66,8 +66,23 @@
       },
       {
         "category": "Branches",
-        "command": "goodBranchManager.pullBranch",
-        "title": "Pull..."
+        "command": "goodBranchManager.pullDefault",
+        "title": "Pull (Default)"
+      },
+      {
+        "category": "Branches",
+        "command": "goodBranchManager.pullRebase",
+        "title": "Pull --rebase"
+      },
+      {
+        "category": "Branches",
+        "command": "goodBranchManager.pullNoRebase",
+        "title": "Pull --no-rebase"
+      },
+      {
+        "category": "Branches",
+        "command": "goodBranchManager.pullFfOnly",
+        "title": "Pull --ff-only"
       },
       {
         "category": "Branches",
@@ -166,7 +181,19 @@
           "when": "false"
         },
         {
-          "command": "goodBranchManager.pullBranch",
+          "command": "goodBranchManager.pullDefault",
+          "when": "false"
+        },
+        {
+          "command": "goodBranchManager.pullRebase",
+          "when": "false"
+        },
+        {
+          "command": "goodBranchManager.pullNoRebase",
+          "when": "false"
+        },
+        {
+          "command": "goodBranchManager.pullFfOnly",
           "when": "false"
         },
         {
@@ -223,8 +250,23 @@
           "when": "view == goodBranchManager.branches && viewItem =~ /branch/ && !(viewItem =~ /current/)"
         },
         {
-          "command": "goodBranchManager.pullBranch",
-          "group": "3_modify@3",
+          "command": "goodBranchManager.pullDefault",
+          "group": "3_pull@1",
+          "when": "view == goodBranchManager.branches && viewItem =~ /branch-local/ && viewItem =~ /current/ && viewItem =~ /upstream/"
+        },
+        {
+          "command": "goodBranchManager.pullRebase",
+          "group": "3_pull@2",
+          "when": "view == goodBranchManager.branches && viewItem =~ /branch-local/ && viewItem =~ /current/ && viewItem =~ /upstream/"
+        },
+        {
+          "command": "goodBranchManager.pullNoRebase",
+          "group": "3_pull@3",
+          "when": "view == goodBranchManager.branches && viewItem =~ /branch-local/ && viewItem =~ /current/ && viewItem =~ /upstream/"
+        },
+        {
+          "command": "goodBranchManager.pullFfOnly",
+          "group": "3_pull@4",
           "when": "view == goodBranchManager.branches && viewItem =~ /branch-local/ && viewItem =~ /current/ && viewItem =~ /upstream/"
         },
         {

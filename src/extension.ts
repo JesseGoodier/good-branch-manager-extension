@@ -258,33 +258,30 @@ export async function activate(context: vscode.ExtensionContext): Promise<void> 
     tree.refresh();
   });
 
-  register('goodBranchManager.pullBranch', async (node) => {
-    const git = requireGit(tree);
-    const b = node.branch;
-    if (b.isRemote) return;
-    if (!b.isCurrent) {
-      vscode.window.showWarningMessage('Pull only runs on the checked-out branch. Checkout this branch first.');
-      return;
-    }
-    if (!b.upstream || b.upstreamGone) {
-      vscode.window.showWarningMessage(`${b.name} does not have an active upstream to pull from.`);
-      return;
-    }
-
-    const option = await vscode.window.showQuickPick(
-      [
-        { label: 'Pull (Default)', args: ['pull'], description: 'Run pull using configured git default (merge or rebase)' },
-        { label: 'Pull --rebase', args: ['pull', '--rebase'], description: 'Replay local commits on top of the upstream branch' },
-        { label: 'Pull --no-rebase', args: ['pull', '--no-rebase'], description: 'Explicitly merge upstream changes, creating a merge commit' },
-        { label: 'Pull --ff-only', args: ['pull', '--ff-only'], description: 'Only update when a fast-forward is possible' }
-      ],
-      { placeHolder: `Pull updates for ${b.name} from ${b.upstream}` }
-    );
-    if (!option) return;
-    await git.exec(option.args);
-    tree.refresh();
-    vscode.window.setStatusBarMessage(`${option.label} completed for ${b.name}`, 4000);
-  });
+  const pullOptions: Array<{ command: string; args: string[]; label: string }> = [
+    { command: 'goodBranchManager.pullDefault', args: ['pull'], label: 'Pull (Default)' },
+    { command: 'goodBranchManager.pullRebase', args: ['pull', '--rebase'], label: 'Pull --rebase' },
+    { command: 'goodBranchManager.pullNoRebase', args: ['pull', '--no-rebase'], label: 'Pull --no-rebase' },
+    { command: 'goodBranchManager.pullFfOnly', args: ['pull', '--ff-only'], label: 'Pull --ff-only' }
+  ];
+  for (const option of pullOptions) {
+    register(option.command, async (node) => {
+      const git = requireGit(tree);
+      const b = node.branch;
+      if (b.isRemote) return;
+      if (!b.isCurrent) {
+        vscode.window.showWarningMessage('Pull only runs on the checked-out branch. Checkout this branch first.');
+        return;
+      }
+      if (!b.upstream || b.upstreamGone) {
+        vscode.window.showWarningMessage(`${b.name} does not have an active upstream to pull from.`);
+        return;
+      }
+      await git.exec(option.args);
+      tree.refresh();
+      vscode.window.setStatusBarMessage(`${option.label} completed for ${b.name}`, 4000);
+    });
+  }
 
   register('goodBranchManager.setUpstream', async (node) => {
     const git = requireGit(tree);
