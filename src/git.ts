@@ -10,9 +10,15 @@ export interface RemoteRepo {
   provider: GitProvider;
 }
 
+/** GitHub.com, GitHub Enterprise Cloud (*.github.com), and common GHE Server hosts (github.*). */
+export function isGitHubHost(host: string): boolean {
+  const h = host.toLowerCase();
+  return h === 'github.com' || h.endsWith('.github.com') || h.startsWith('github.');
+}
+
 function detectProvider(host: string, path: string): GitProvider {
   const h = host.toLowerCase();
-  if (h === 'github.com' || h.endsWith('.github.com')) return 'github';
+  if (isGitHubHost(h)) return 'github';
   if (h === 'gitlab.com' || h.includes('gitlab')) return 'gitlab';
   if (h === 'bitbucket.org') return 'bitbucket';
   if (h === 'dev.azure.com' || h === 'ssh.dev.azure.com' || h.endsWith('.visualstudio.com')) return 'azure';
@@ -46,6 +52,15 @@ export interface RepoInfo {
   defaultBranch: string;
   local: Branch[];
   remote: Branch[];
+}
+
+export interface CommitEntry {
+  fullSha: string;
+  sha: string;
+  subject: string;
+  authorName: string;
+  committerDateUnix: number;
+  committerDateRelative: string;
 }
 
 export class GitError extends Error {
@@ -221,6 +236,28 @@ export class Git {
   async getCommitSummaries(base: string, head: string, limit = 20): Promise<string[]> {
     const out = await this.tryExec(['log', `${base}..${head}`, '--pretty=%s', `-${limit}`]);
     return (out ?? '').split('\n').filter(Boolean);
+  }
+
+  async getBranchCommits(ref: string, limit = 30): Promise<CommitEntry[]> {
+    // %x00 makes git emit a NUL separator in its output. Pass the literal "%x00" in the
+    // format string — an actual NUL byte in an argv entry makes Node's spawn throw.
+    const format = ['%H', '%h', '%s', '%an', '%cr', '%ct'].join('%x00');
+    const raw = await this.tryExec(['log', ref, `--format=${format}`, `-${limit}`]);
+    if (!raw) return [];
+    return raw
+      .split('\n')
+      .filter(Boolean)
+      .map((line) => {
+        const [fullSha, sha, subject, authorName, committerDateRelative, committerDateUnix] = line.split(NUL);
+        return {
+          fullSha,
+          sha,
+          subject,
+          authorName,
+          committerDateRelative,
+          committerDateUnix: Number(committerDateUnix)
+        };
+      });
   }
 }
 
