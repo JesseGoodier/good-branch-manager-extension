@@ -1,16 +1,18 @@
 import * as vscode from 'vscode';
+import { validateBranchName } from './branchNames';
 import { Branch, Git, GitError, RepoInfo } from './git';
 import { branchUrl, commitUrl, resolveGitHubRepo, resolveRemoteRepo } from './github';
 import { openCreatePrPanel } from './prPanel';
+import {
+  BranchSnapshot,
+  getBranchRemote,
+  publishPromptKey,
+  shouldPromptForPublishedBranch,
+  snapshotBranches
+} from './publishPrompt';
 import { BranchNode, BranchTreeProvider, CommitNode } from './tree';
 
-const BRANCH_NAME_RE = /^(?!\/|.*(?:\/\.|\/\/|\.\.|@\{|\\))[^\x00-\x20~^:?*[\]]+(?<!\.lock)(?<!\/)(?<!\.)$/;
 const PUBLISH_PROMPT_SETTING = 'goodBranchManager.promptForPrOnPublish';
-
-interface BranchSnapshot {
-  upstream?: string;
-  upstreamGone: boolean;
-}
 
 export async function activate(context: vscode.ExtensionContext): Promise<void> {
   const tree = new BranchTreeProvider(context.extensionUri);
@@ -122,10 +124,7 @@ export async function activate(context: vscode.ExtensionContext): Promise<void> 
     const name = await vscode.window.showInputBox({
       prompt: `New branch from ${source}`,
       placeHolder: 'e.g. feature/my-change',
-      validateInput: (v) =>
-        !v.trim() ? 'Branch name is required.'
-          : !BRANCH_NAME_RE.test(v.trim()) ? 'Not a valid git branch name.'
-            : undefined
+      validateInput: (v) => validateBranchName(v),
     });
     if (!name) return;
     await git.exec(['switch', '-c', name.trim(), source]);
@@ -166,10 +165,7 @@ export async function activate(context: vscode.ExtensionContext): Promise<void> 
     const newName = await vscode.window.showInputBox({
       prompt: `Rename branch ${oldName}`,
       value: oldName,
-      validateInput: (v) =>
-        !v.trim() ? 'Branch name is required.'
-          : !BRANCH_NAME_RE.test(v.trim()) ? 'Not a valid git branch name.'
-            : undefined
+      validateInput: (v) => validateBranchName(v),
     });
     if (!newName || newName.trim() === oldName) return;
     await git.exec(['branch', '-m', oldName, newName.trim()]);
@@ -390,31 +386,38 @@ async function checkForPublishedBranch(
   if (!previous) return;
 
   const enabled = vscode.workspace.getConfiguration('goodBranchManager').get<boolean>('promptForPrOnPublish', true);
-  if (!enabled) return;
-
   const branch = info.local.find((b) => b.isCurrent);
-  if (!branch || branch.name === info.defaultBranch || !branch.upstream || branch.upstreamGone) return;
+  const transitionKey = branch?.upstream
+    ? publishPromptKey(repoRoot, branch.name, branch.upstream)
+    : undefined;
+  if (
+    !shouldPromptForPublishedBranch({
+      enabled,
+      previousSnapshot: previous,
+      branch,
+      defaultBranch: info.defaultBranch,
+      hasExistingPr: tree.getRepoInfo()?.root === repoRoot && Boolean(branch && tree.getPullRequest(branch.name)),
+      suppressed: transitionKey ? suppressedPrompts.delete(transitionKey) : false,
+      alreadyPrompted: transitionKey
+        ? Boolean(context.workspaceState.get<boolean>(`goodBranchManager.prPrompt.${transitionKey}`))
+        : false
+    })
+  ) {
+    return;
+  }
 
-  const before = previous.get(branch.name);
-  if (!before || before.upstream || before.upstreamGone) return;
-  if (tree.getRepoInfo()?.root === repoRoot && tree.getPullRequest(branch.name)) return;
-
-  const remote = getBranchRemote(branch);
+  const remote = getBranchRemote(branch!);
   const repo = await resolveGitHubRepo(git, remote);
   if (!repo) return;
 
-  const transitionKey = publishPromptKey(repoRoot, branch.name, branch.upstream);
-  if (suppressedPrompts.delete(transitionKey)) return;
-
   const promptKey = `goodBranchManager.prPrompt.${transitionKey}`;
-  if (context.workspaceState.get<boolean>(promptKey)) return;
   await context.workspaceState.update(promptKey, true);
 
   const create = 'Create PR';
   const notNow = 'Not Now';
   const dontAsk = "Don't Ask Again";
   const picked = await vscode.window.showInformationMessage(
-    `Branch ${branch.name} was published to ${branch.upstream}. Create a pull request?`,
+    `Branch ${branch!.name} was published to ${branch!.upstream}. Create a pull request?`,
     create,
     notNow,
     dontAsk
@@ -425,20 +428,9 @@ async function checkForPublishedBranch(
     return;
   }
   if (picked === create) {
-    await openCreatePullRequestPanel(git, info, branch, () => tree.refresh(), { remote });
+    const remote = getBranchRemote(branch!);
+    await openCreatePullRequestPanel(git, info, branch!, () => tree.refresh(), { remote });
   }
-}
-
-function snapshotBranches(branches: Branch[]): Map<string, BranchSnapshot> {
-  return new Map(
-    branches.map((branch) => [
-      branch.name,
-      {
-        upstream: branch.upstream,
-        upstreamGone: branch.upstreamGone
-      }
-    ])
-  );
 }
 
 async function openCreatePullRequestPanel(
@@ -466,13 +458,6 @@ async function openCreatePullRequestPanel(
   await openCreatePrPanel(git, repo, branch, info.defaultBranch, info.local, onCreated, remote, options.onPublished);
 }
 
-function getBranchRemote(branch: Branch): string {
-  if (branch.upstream) {
-    return branch.upstream.split('/')[0];
-  }
-  return branch.remote ?? 'origin';
-}
-
 function suppressPublishPrompt(
   suppressedPrompts: Set<string>,
   repoRoot: string,
@@ -480,10 +465,6 @@ function suppressPublishPrompt(
   upstream: string
 ): void {
   suppressedPrompts.add(publishPromptKey(repoRoot, branchName, upstream));
-}
-
-function publishPromptKey(repoRoot: string, branchName: string, upstream: string): string {
-  return `${repoRoot}:${branchName}:${upstream}`;
 }
 
 export function deactivate(): void { }
