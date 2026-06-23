@@ -1,6 +1,6 @@
 {
   "name": "good-branch-manager",
-  "version": "0.2.1",
+  "version": "0.2.3",
   "description": "Simple git branch view: sync status at a glance, branch actions, and GitHub pull requests from the Source Control sidebar.",
   "homepage": "https://github.com/JesseGoodier/good-branch-manager-extension#readme",
   "publisher": "JesseGoodier",
@@ -311,9 +311,17 @@
     ]
   },
   "devDependencies": {
+    "@types/mocha": "^10.0.10",
     "@types/node": "^20.0.0",
     "@types/vscode": "1.105.0",
+    "@vscode/test-electron": "^3.0.0",
+    "glob": "^11.0.3",
+    "mocha": "^11.7.1",
     "typescript": "^5.6.0"
+  },
+  "overrides": {
+    "diff": "^8.0.4",
+    "serialize-javascript": "^7.0.6"
   },
   "displayName": "Good Branch Manager",
   "engines": {
@@ -327,6 +335,9 @@
     "compile": "node ./node_modules/typescript/lib/tsc.js -p ./",
     "package": "npx @vscode/vsce package",
     "release": "scripts/release.sh",
+    "test": "npm run test:unit && npm run test:integration",
+    "test:integration": "npm run compile && node ./out/test/runTest.js",
+    "test:unit": "npm run compile && mocha --ui tdd --require ./out/test/unit/setup.js './out/test/unit/**/*.test.js'",
     "update-lockfile": "npm install --package-lock-only --ignore-scripts",
     "vscode:prepublish": "npm run build",
     "watch": "node ./node_modules/typescript/lib/tsc.js -watch -p ./"

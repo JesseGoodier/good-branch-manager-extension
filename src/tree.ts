@@ -1,5 +1,13 @@
 import * as vscode from 'vscode';
 import { Branch, CommitEntry, Git, RemoteRepo, RepoInfo, findRepoRoot } from './git';
+import {
+  branchSyncStatus,
+  buildBranchContextValue,
+  buildBranchDescription,
+  escapeMarkdown,
+  isBranchStale,
+  splitRemoteBranch
+} from './branchUi';
 import { PullRequest, branchUrl, commitUrl, listPullRequests, resolveRemoteRepo } from './github';
 
 type Node = GroupNode | BranchNode | CommitNode | LoadingNode;
@@ -267,30 +275,19 @@ export class BranchTreeProvider implements vscode.TreeDataProvider<Node> {
     item.id = (b.isRemote ? 'remote:' : 'local:') + b.name;
 
     const staleDays = vscode.workspace.getConfiguration('goodBranchManager').get<number>('staleAfterDays', 10);
-    const ageDays = (Date.now() / 1000 - b.committerDateUnix) / 86400;
-    const isStale = staleDays > 0 && ageDays > staleDays && !b.isCurrent;
+    const isStale = isBranchStale(b, staleDays);
 
     const showPrStatus = vscode.workspace.getConfiguration('goodBranchManager').get<boolean>('showPrStatus', true);
     const branchName = b.isRemote ? b.shortName : b.name;
     const pr = showPrStatus ? this.prMap.get(branchName) : undefined;
 
-    const status = this.syncStatus(b);
-    const hints: string[] = [status.text, b.committerDateRelative];
-    if (!b.isRemote && b.name === node.repo.defaultBranch) hints.push('default');
-    if (b.merged) hints.push('merged');
-    if (isStale) hints.push('stale');
+    const status = branchSyncStatus(b);
 
-    if (pr) {
-      if (pr.state === 'open') {
-        hints.push(`PR #${pr.number}`);
-      } else if (pr.mergedAt) {
-        hints.push(`PR #${pr.number} (merged)`);
-      } else {
-        hints.push(`PR #${pr.number} (closed)`);
-      }
-    }
-
-    item.description = hints.filter(Boolean).join(' · ');
+    item.description = buildBranchDescription(b, {
+      defaultBranch: node.repo.defaultBranch,
+      staleAfterDays: staleDays,
+      pr
+    });
 
     if (pr && !b.isCurrent) {
       if (pr.state === 'open') {
@@ -324,13 +321,7 @@ export class BranchTreeProvider implements vscode.TreeDataProvider<Node> {
     item.tooltip = new vscode.MarkdownString(lines.join('\n\n'));
     item.tooltip.isTrusted = true;
 
-    const ctx: string[] = ['branch'];
-    ctx.push(b.isRemote ? 'remote' : 'local');
-    if (b.upstream && !b.upstreamGone) ctx.push('upstream');
-    if (b.isCurrent) ctx.push('current');
-    if (!b.isRemote && b.name === node.repo.defaultBranch) ctx.push('default');
-    if (pr) ctx.push('has-pr');
-    item.contextValue = ctx.join('-');
+    item.contextValue = buildBranchContextValue(b, node.repo.defaultBranch, Boolean(pr));
 
     return item;
   }
@@ -359,71 +350,6 @@ export class BranchTreeProvider implements vscode.TreeDataProvider<Node> {
     }
 
     return item;
-  }
-
-  private syncStatus(b: Branch): { text: string; tooltip: string; iconFile: string } {
-    if (b.isRemote) {
-      return { text: '', tooltip: 'Remote branch (not checked out locally).', iconFile: 'cloud-neutral' };
-    }
-    if (b.isCurrent) {
-      const extra = this.aheadBehindText(b);
-      return {
-        text: extra || 'synced',
-        tooltip: ['This is the checked-out branch.', this.syncStateDescription(b)].join('\n\n'),
-        iconFile: 'check-green'
-      };
-    }
-    if (!b.upstream) {
-      return {
-        text: 'local only',
-        tooltip: 'Local only — never pushed to a remote.',
-        iconFile: 'cloud-upload-yellow'
-      };
-    }
-    if (b.upstreamGone) {
-      return {
-        text: 'upstream gone',
-        tooltip: 'The remote branch was deleted (likely merged). Safe to clean up.',
-        iconFile: 'warning-orange'
-      };
-    }
-    if (b.ahead === 0 && b.behind === 0) {
-      return { text: 'synced', tooltip: 'In sync with its remote.', iconFile: 'cloud-blue' };
-    }
-    const text = this.aheadBehindText(b);
-    return {
-      text,
-      tooltip: `Out of sync with ${b.upstream}: ${text}.`,
-      iconFile: b.ahead > 0 ? 'arrow-up-purple' : 'arrow-down-purple'
-    };
-  }
-
-  private aheadBehindText(b: Branch): string {
-    const parts: string[] = [];
-    if (b.ahead > 0) parts.push(`${b.ahead}↑`);
-    if (b.behind > 0) parts.push(`${b.behind}↓`);
-    return parts.join(' ');
-  }
-
-  private syncStateDescription(b: Branch): string {
-    if (!b.upstream) {
-      return 'Local only — never pushed to a remote.';
-    }
-    if (b.upstreamGone) {
-      return `Upstream ${b.upstream} is gone.`;
-    }
-    if (b.ahead === 0 && b.behind === 0) {
-      return `In sync with ${b.upstream}.`;
-    }
-
-    const parts: string[] = [];
-    if (b.ahead > 0) {
-      parts.push(`${b.ahead} commit${b.ahead === 1 ? '' : 's'} ahead of ${b.upstream}`);
-    }
-    if (b.behind > 0) {
-      parts.push(`${b.behind} commit${b.behind === 1 ? '' : 's'} behind ${b.upstream}`);
-    }
-    return parts.join(', ') + '.';
   }
 
   private async refreshRemoteRepos(git: Git): Promise<void> {
@@ -483,19 +409,4 @@ export class BranchTreeProvider implements vscode.TreeDataProvider<Node> {
     }
     return this.remoteRepos.get('origin');
   }
-}
-
-function splitRemoteBranch(ref: string): { remote: string; branch: string } {
-  const slash = ref.indexOf('/');
-  if (slash === -1) {
-    return { remote: 'origin', branch: ref };
-  }
-  return {
-    remote: ref.slice(0, slash),
-    branch: ref.slice(slash + 1)
-  };
-}
-
-function escapeMarkdown(value: string): string {
-  return value.replace(/([\\`*_{}[\]()#+\-.!|>])/g, '\\$1');
 }
