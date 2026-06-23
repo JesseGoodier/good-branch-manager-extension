@@ -39,6 +39,21 @@ export class BranchTreeProvider implements vscode.TreeDataProvider<Node> {
   private isForceRefresh = false;
   private loadPromise: Promise<void> | null = null;
   private isLoading = false;
+  private dataReady = false;
+
+  constructor(private readonly extensionUri: vscode.Uri) {}
+
+  /**
+   * Resolves a colored icon shipped under media/. Custom SVGs are used instead of themed
+   * codicons because VS Code repaints a selected row's codicon with the selection foreground
+   * (an !important rule that a ThemeColor cannot override); image icons keep their own color.
+   */
+  private icon(name: string): { light: vscode.Uri; dark: vscode.Uri } {
+    return {
+      light: vscode.Uri.joinPath(this.extensionUri, 'media', 'light', `${name}.svg`),
+      dark: vscode.Uri.joinPath(this.extensionUri, 'media', 'dark', `${name}.svg`)
+    };
+  }
 
   getPullRequest(branchName: string): PullRequest | undefined {
     return this.prMap.get(branchName);
@@ -52,7 +67,6 @@ export class BranchTreeProvider implements vscode.TreeDataProvider<Node> {
   refresh(): void {
     this.isForceRefresh = true;
     this.commitCache.clear();
-    this.loadPromise = null;
     void this.ensureLoaded(true);
   }
 
@@ -75,21 +89,27 @@ export class BranchTreeProvider implements vscode.TreeDataProvider<Node> {
       return [];
     }
 
-    void this.ensureLoaded();
-    if (this.isLoading && this.rootNodes.length === 0) {
+    if (!this.dataReady && this.isLoading) {
       return [new LoadingNode('Loading branches…')];
     }
     return this.rootNodes;
   }
 
   private async ensureLoaded(force = false): Promise<void> {
-    if (this.loadPromise && !force) {
-      return this.loadPromise;
+    if (!force) {
+      if (this.loadPromise) {
+        return this.loadPromise;
+      }
+      if (this.dataReady) {
+        return;
+      }
     }
+
     this.isLoading = true;
-    if (force || this.rootNodes.length === 0) {
+    if (!this.dataReady) {
       this._onDidChangeTreeData.fire();
     }
+
     this.loadPromise = this.loadRootNodes(force).finally(() => {
       this.isLoading = false;
       this.loadPromise = null;
@@ -105,6 +125,7 @@ export class BranchTreeProvider implements vscode.TreeDataProvider<Node> {
       this.rootNodes = [];
       this.prMap.clear();
       this.remoteRepos.clear();
+      this.dataReady = true;
       this._onDidChangeTreeData.fire();
       return;
     }
@@ -116,6 +137,7 @@ export class BranchTreeProvider implements vscode.TreeDataProvider<Node> {
     } catch (err) {
       console.error('goodBranchManager: failed to list branches', err);
       this.rootNodes = [];
+      this.dataReady = true;
       this._onDidChangeTreeData.fire();
       return;
     }
@@ -130,6 +152,7 @@ export class BranchTreeProvider implements vscode.TreeDataProvider<Node> {
       ];
     }
 
+    this.dataReady = true;
     this._onDidChangeTreeData.fire();
     this.triggerPrFetch(this.git, force);
   }
@@ -226,7 +249,7 @@ export class BranchTreeProvider implements vscode.TreeDataProvider<Node> {
           : vscode.TreeItemCollapsibleState.Collapsed
       );
       item.contextValue = `group-${element.kind}`;
-      item.iconPath = new vscode.ThemeIcon(element.kind === 'local' ? 'device-desktop' : 'cloud');
+      item.iconPath = this.icon(element.kind === 'local' ? 'vm-neutral' : 'cloud-neutral');
       return item;
     }
     if (element instanceof CommitNode) {
@@ -243,7 +266,7 @@ export class BranchTreeProvider implements vscode.TreeDataProvider<Node> {
     );
     item.id = (b.isRemote ? 'remote:' : 'local:') + b.name;
 
-    const staleDays = vscode.workspace.getConfiguration('goodBranchManager').get<number>('staleAfterDays', 30);
+    const staleDays = vscode.workspace.getConfiguration('goodBranchManager').get<number>('staleAfterDays', 10);
     const ageDays = (Date.now() / 1000 - b.committerDateUnix) / 86400;
     const isStale = staleDays > 0 && ageDays > staleDays && !b.isCurrent;
 
@@ -271,14 +294,14 @@ export class BranchTreeProvider implements vscode.TreeDataProvider<Node> {
 
     if (pr && !b.isCurrent) {
       if (pr.state === 'open') {
-        item.iconPath = new vscode.ThemeIcon('git-pull-request', new vscode.ThemeColor('charts.green'));
+        item.iconPath = this.icon('git-pull-request-green');
       } else if (pr.mergedAt) {
-        item.iconPath = new vscode.ThemeIcon('git-pull-request-merged', new vscode.ThemeColor('charts.purple'));
+        item.iconPath = this.icon('git-merge-purple');
       } else {
-        item.iconPath = new vscode.ThemeIcon('git-pull-request-closed', new vscode.ThemeColor('charts.red'));
+        item.iconPath = this.icon('git-pull-request-closed-red');
       }
     } else {
-      item.iconPath = new vscode.ThemeIcon(status.icon, status.color ? new vscode.ThemeColor(status.color) : undefined);
+      item.iconPath = this.icon(status.iconFile);
     }
 
     const lines = [
@@ -295,7 +318,7 @@ export class BranchTreeProvider implements vscode.TreeDataProvider<Node> {
 
     if (pr) {
       const prStatus = pr.state === 'open' ? 'open' : (pr.mergedAt ? 'merged' : 'closed');
-      lines.push(`Pull Request: [#${pr.number} - ${pr.title}](${pr.htmlUrl}) (${prStatus})`);
+      lines.push(`Pull Request: [#${pr.number} - ${escapeMarkdown(pr.title)}](${pr.htmlUrl}) (${prStatus})`);
     }
 
     item.tooltip = new vscode.MarkdownString(lines.join('\n\n'));
@@ -317,7 +340,7 @@ export class BranchTreeProvider implements vscode.TreeDataProvider<Node> {
     const item = new vscode.TreeItem(c.subject, vscode.TreeItemCollapsibleState.None);
     item.id = `commit:${node.branch.name}:${c.fullSha}`;
     item.description = `${c.sha} · ${c.authorName} · ${c.committerDateRelative}`;
-    item.iconPath = new vscode.ThemeIcon('git-commit');
+    item.iconPath = this.icon('git-commit-neutral');
 
     const linkedSha = this.linkedCommitSha(node.branch, c.fullSha, c.sha);
     item.tooltip = new vscode.MarkdownString(
@@ -338,44 +361,40 @@ export class BranchTreeProvider implements vscode.TreeDataProvider<Node> {
     return item;
   }
 
-  private syncStatus(b: Branch): { text: string; tooltip: string; icon: string; color?: string } {
+  private syncStatus(b: Branch): { text: string; tooltip: string; iconFile: string } {
     if (b.isRemote) {
-      return { text: '', tooltip: 'Remote branch (not checked out locally).', icon: 'cloud' };
+      return { text: '', tooltip: 'Remote branch (not checked out locally).', iconFile: 'cloud-neutral' };
     }
     if (b.isCurrent) {
       const extra = this.aheadBehindText(b);
       return {
         text: extra || 'synced',
         tooltip: ['This is the checked-out branch.', this.syncStateDescription(b)].join('\n\n'),
-        icon: 'check',
-        color: 'charts.green'
+        iconFile: 'check-green'
       };
     }
     if (!b.upstream) {
       return {
         text: 'local only',
         tooltip: 'Local only — never pushed to a remote.',
-        icon: 'cloud-upload',
-        color: 'charts.yellow'
+        iconFile: 'cloud-upload-yellow'
       };
     }
     if (b.upstreamGone) {
       return {
         text: 'upstream gone',
         tooltip: 'The remote branch was deleted (likely merged). Safe to clean up.',
-        icon: 'warning',
-        color: 'charts.orange'
+        iconFile: 'warning-orange'
       };
     }
     if (b.ahead === 0 && b.behind === 0) {
-      return { text: 'synced', tooltip: 'In sync with its remote.', icon: 'cloud', color: 'charts.blue' };
+      return { text: 'synced', tooltip: 'In sync with its remote.', iconFile: 'cloud-blue' };
     }
     const text = this.aheadBehindText(b);
     return {
       text,
       tooltip: `Out of sync with ${b.upstream}: ${text}.`,
-      icon: b.ahead > 0 ? 'arrow-up' : 'arrow-down',
-      color: 'charts.purple'
+      iconFile: b.ahead > 0 ? 'arrow-up-purple' : 'arrow-down-purple'
     };
   }
 

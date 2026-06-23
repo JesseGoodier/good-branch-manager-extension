@@ -13,7 +13,7 @@ interface BranchSnapshot {
 }
 
 export async function activate(context: vscode.ExtensionContext): Promise<void> {
-  const tree = new BranchTreeProvider();
+  const tree = new BranchTreeProvider(context.extensionUri);
   tree.prefetch();
   const view = vscode.window.createTreeView('goodBranchManager.branches', {
     treeDataProvider: tree,
@@ -348,17 +348,6 @@ export async function activate(context: vscode.ExtensionContext): Promise<void> 
     await openCreatePullRequestPanel(git, info, node.branch, () => tree.refresh(), {
       onPublished: (upstream) => suppressPublishPrompt(suppressedPublishPrompts, git.repoRoot, node.branch.name, upstream)
     });
-  });
-
-  register('goodBranchManager.openPullRequest', async (node) => {
-    const b = node.branch;
-    const branchName = b.isRemote ? b.shortName : b.name;
-    const pr = tree.getPullRequest(branchName);
-    if (pr) {
-      await vscode.env.openExternal(vscode.Uri.parse(pr.htmlUrl));
-    } else {
-      vscode.window.showWarningMessage(`No pull request found for branch ${b.name}.`);
-    }
   });
 
   register('goodBranchManager.openPullRequest', async (node) => {
