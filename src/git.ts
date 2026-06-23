@@ -239,7 +239,9 @@ export class Git {
   }
 
   async getBranchCommits(ref: string, limit = 30): Promise<CommitEntry[]> {
-    const format = ['%H', '%h', '%s', '%an', '%cr', '%ct'].join(NUL);
+    // %x00 makes git emit a NUL separator in its output. Pass the literal "%x00" in the
+    // format string — an actual NUL byte in an argv entry makes Node's spawn throw.
+    const format = ['%H', '%h', '%s', '%an', '%cr', '%ct'].join('%x00');
     const raw = await this.tryExec(['log', ref, `--format=${format}`, `-${limit}`]);
     if (!raw) return [];
     return raw
