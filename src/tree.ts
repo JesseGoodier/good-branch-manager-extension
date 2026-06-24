@@ -368,14 +368,11 @@ export class BranchTreeProvider implements vscode.TreeDataProvider<Node> {
     item.tooltip.isTrusted = true;
     item.contextValue = 'commit';
 
-    const remoteRepo = this.remoteRepoForBranch(node.branch);
-    if (remoteRepo) {
-      item.command = {
-        command: 'goodBranchManager.openCommit',
-        title: 'Open Commit',
-        arguments: [node]
-      };
-    }
+    item.command = {
+      command: 'goodBranchManager.openCommit',
+      title: 'Show Commit',
+      arguments: [node]
+    };
 
     return item;
   }

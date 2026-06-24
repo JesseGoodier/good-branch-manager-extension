@@ -131,6 +131,18 @@ suite('Git repository integration', () => {
     assert.strictEqual(full.length, 2);
   });
 
+  test('loads commit details and patch', async () => {
+    const git = new Git(repo.root);
+    const info = await git.getBranches();
+    const main = info.local.find((branch) => branch.name === 'main');
+    assert.ok(main);
+    const details = await git.getCommitDetails(main!.fullSha);
+    assert.ok(details);
+    assert.strictEqual(details!.subject, 'initial');
+    assert.strictEqual(details!.authorName, 'Test User');
+    assert.strictEqual(typeof details!.patch, 'string');
+  });
+
   test('surfaces git errors with stderr', async () => {
     const git = new Git(repo.root);
     await assert.rejects(

@@ -29,7 +29,7 @@ The release workflow packages each version and attaches the VSIX package to the 
 ### Commit history
 
 - **Expandable branches**: Click a branch to expand it and list recent commits. By default, only commits unique to that branch are shown (not commits already on the default branch); enable `showBaseBranchCommits` to include the full history.
-- **Open commits on GitHub**: Click a commit row to open it on the remote host (when a supported remote is configured).
+- **Show commits in the editor**: Click a commit row to open VS Code's native side-by-side multi-file diff view (the same UI as the built-in Git history). Falls back to an in-extension panel when the Git extension is unavailable.
 
 ### GitHub pull requests
 

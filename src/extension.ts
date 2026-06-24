@@ -1,7 +1,8 @@
 import * as vscode from 'vscode';
 import { validateBranchName } from './branchNames';
 import { Branch, Git, GitError, RepoInfo } from './git';
-import { branchUrl, commitUrl, resolveGitHubRepo, resolveRemoteRepo } from './github';
+import { branchUrl, resolveGitHubRepo, resolveRemoteRepo } from './github';
+import { openCommitView } from './commitView';
 import { openCreatePrPanel } from './prPanel';
 import {
   BranchSnapshot,
@@ -152,10 +153,14 @@ export async function activate(context: vscode.ExtensionContext): Promise<void> 
       if (!(node instanceof CommitNode)) return;
       const git = tree.getGit();
       if (!git) return;
-      const remote = node.branch.remote ?? node.branch.upstream?.split('/')[0] ?? 'origin';
-      const repo = await resolveRemoteRepo(git, remote);
-      if (!repo) return;
-      await vscode.env.openExternal(vscode.Uri.parse(commitUrl(repo, node.commit.fullSha)));
+      try {
+        const remote = node.branch.remote ?? node.branch.upstream?.split('/')[0] ?? 'origin';
+        const remoteRepo = await resolveRemoteRepo(git, remote);
+        await openCommitView(git, node.commit.fullSha, node.branch.name, remoteRepo);
+      } catch (err: any) {
+        const detail = err instanceof GitError ? err.stderr || err.message : err?.message ?? String(err);
+        vscode.window.showErrorMessage(`Branches: ${detail}`);
+      }
     })
   );
 
