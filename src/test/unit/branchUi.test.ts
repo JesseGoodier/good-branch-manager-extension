@@ -4,7 +4,9 @@ import {
   branchSyncStatus,
   buildBranchContextValue,
   buildBranchDescription,
+  buildMergeStatusTooltip,
   escapeMarkdown,
+  isBranchMergedDisplay,
   isBranchStale,
   resolveBranchBaseRef,
   splitRemoteBranch
@@ -139,6 +141,7 @@ suite('branchUi helpers', () => {
           title: 'Add tests',
           state: 'open',
           mergedAt: null,
+          mergedBy: null,
           htmlUrl: 'https://github.com/example/pr/42',
           headRef: 'feature/test'
         }
@@ -147,5 +150,72 @@ suite('branchUi helpers', () => {
     assert.match(description, /1↑/);
     assert.match(description, /PR #42/);
     assert.match(description, /2 days ago/);
+  });
+
+  test('isBranchMergedDisplay uses PR merge data even at the default tip', () => {
+    const main = sampleBranch({
+      name: 'main',
+      fullSha: 'sha-main',
+      sha: 'sha-mai',
+      upstream: undefined
+    });
+    const feature = sampleBranch({
+      name: 'feature/x',
+      fullSha: 'sha-main',
+      sha: 'sha-mai',
+      merged: false
+    });
+    assert.strictEqual(
+      isBranchMergedDisplay(feature, {
+        defaultBranch: 'main',
+        localBranches: [main, feature],
+        pr: {
+          number: 7,
+          title: 'Feature',
+          state: 'closed',
+          mergedAt: '2026-06-01T12:00:00Z',
+          mergedBy: 'octocat',
+          htmlUrl: 'https://github.com/example/pr/7',
+          headRef: 'feature/x'
+        }
+      }),
+      true
+    );
+  });
+
+  test('isBranchMergedDisplay ignores fresh branches at the default tip', () => {
+    const main = sampleBranch({
+      name: 'main',
+      fullSha: 'sha-main',
+      sha: 'sha-mai',
+      upstream: undefined
+    });
+    const fresh = sampleBranch({
+      name: 'screenshots',
+      fullSha: 'sha-main',
+      sha: 'sha-mai',
+      merged: false
+    });
+    assert.strictEqual(
+      isBranchMergedDisplay(fresh, { defaultBranch: 'main', localBranches: [main, fresh] }),
+      false
+    );
+  });
+
+  test('buildMergeStatusTooltip includes who merged and when', () => {
+    const line = buildMergeStatusTooltip('main', {
+      pr: {
+        number: 7,
+        title: 'Feature',
+        state: 'closed',
+        mergedAt: '2026-06-01T12:00:00Z',
+        mergedBy: 'octocat',
+        htmlUrl: 'https://github.com/example/pr/7',
+        headRef: 'feature/x'
+      }
+    });
+    assert.ok(line);
+    assert.match(line!, /Merged into main/);
+    assert.match(line!, /octocat/);
   });
 });

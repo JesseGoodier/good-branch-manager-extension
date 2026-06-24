@@ -203,6 +203,7 @@ export interface PullRequest {
   title: string;
   state: 'open' | 'closed';
   mergedAt: string | null;
+  mergedBy: string | null;
   htmlUrl: string;
   headRef: string;
 }
@@ -231,6 +232,7 @@ export async function listPullRequests(repo: RemoteRepo): Promise<PullRequest[]>
     title: pr.title ?? '',
     state: pr.state,
     mergedAt: pr.merged_at || null,
+    mergedBy: pr.merged_by?.login ?? null,
     htmlUrl: pr.html_url,
     headRef: pr.head.ref
   }));
