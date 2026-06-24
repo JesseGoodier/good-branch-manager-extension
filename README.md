@@ -2,7 +2,10 @@
 
 A simple branch manager focused on the most common workflows when using git. Lives in the **Source Control** sidebar as a "Branches - GBM" section.
 
-![Good Branch Manager branch tooltip screenshot](screenshot-tooltip.png)
+<p>
+  <img src="screenshot.png" width="49%" alt="Branch list" />
+  <img src="screenshot-tooltip.png" width="49%" alt="Branch tooltip" />
+</p>
 
 ## Installation
 
