@@ -1,6 +1,6 @@
 # <img src="good-branch-manager.png" width="28" alt="Good Branch Manager icon"> Good Branch Manager
 
-A simple branch manager focused on the most common workflows when using git. Lives in the **Source Control** sidebar as a "Branches GBM" section.
+A simple branch manager focused on the most common workflows when using git. Lives in the **Source Control** sidebar as a "Branches - GBM" section.
 
 ![Good Branch Manager branch tooltip screenshot](screenshot-tooltip.png)
 
@@ -18,21 +18,46 @@ The release workflow packages each version and attaches the VSIX package to the 
 
 ## Features
 
+### Branch list & sync status
+
 - **Branch list** showing local and remote branches sorted by most recent commit, with the current branch highlighted.
-- **Sync indicators**: Highlights the checked-out branch with an icon and shows sync state (`local only`, `synced`, `ahead/behind` counts, or `upstream gone`).
-- **Quick checkout**: Click any branch to switch to it (clicks on remote branches automatically set up tracking).
-- **Branch management actions** (available on right-click):
-  - *Create Branch From This...*
-  - *Open Branch on GitHub* (or other remote host)
-  - *Create Pull Request...* (creates GitHub PRs using VS Code's built-in auth)
-  - *Rename Branch...*
-  - *Merge Into Current Branch*
-  - *Pull...* (supports default config, rebase, explicit merge, and fast-forward options)
-  - *Set/Remove Upstream...*
-  - *Delete Branch...* (optionally cleans up the remote counterpart)
-- **Automatic & background refresh**: Auto-refreshes on repository changes (commits, checkouts, pushes/fetches).
-- **Publish-to-PR prompt**: When the checked-out branch is first published to GitHub, asks whether to create a pull request.
+- **Local and remote groups**: When showing both scopes, branches are grouped into collapsible Local and Remote sections.
+- **Sync indicators**: Colored SVG icons (light/dark variants) show sync state at a glance — checked-out (`synced` / ahead/behind counts), `local only`, `synced`, `upstream gone`, or ahead/behind arrows. Icons keep their color when a row is selected (unlike themed codicons).
 - **Stale & merged hints**: Shows last commit age and flags merged or stale branches.
+- **Rich tooltips**: Hover a branch for markdown tooltips with linked commit SHAs, upstream refs, PR details, and metadata (author, default branch, stale/merged status).
+
+### Commit history
+
+- **Expandable branches**: Click a branch to expand it and list up to 30 recent commits in the same row style as branches.
+- **Open commits on GitHub**: Click a commit row to open it on the remote host (when a supported remote is configured).
+
+### GitHub pull requests
+
+- **PR status icons**: When enabled, fetches pull request status from GitHub and shows open, merged, or closed indicators on branch rows.
+- **Create Pull Request...**: Opens an in-editor form to create GitHub PRs using VS Code's built-in GitHub auth. Auto-fills title and body from commits, pushes the branch if needed, and offers to open the PR in a browser or check out the base branch afterward.
+- **Open Pull Request on GitHub**: Available from the context menu when a branch has an associated PR.
+- **Publish-to-PR prompt**: When the checked-out branch is first published to GitHub, asks whether to create a pull request (with "Not Now" and "Don't Ask Again" options).
+- **GitHub Enterprise**: Supports GitHub.com, GitHub Enterprise Cloud (`*.github.com`), and GitHub Enterprise Server (`github.*` hosts) for PR creation, status fetching, and opening branches/commits/PRs in the browser.
+
+### Branch actions
+
+Right-click any branch for management actions:
+
+- *Checkout Branch* (remote branches automatically set up tracking)
+- *Create Branch From This...*
+- *Open Branch on GitHub* (or other supported remote host)
+- *Create Pull Request...* (local branches)
+- *Open Pull Request on GitHub* (when a PR exists)
+- *Rename Branch...*
+- *Merge Into Current Branch*
+- *Pull (Default)*, *Pull --rebase*, *Pull --no-rebase*, *Pull --ff-only* (current branch with an active upstream only)
+- *Set/Remove Upstream...*
+- *Delete Branch...* (optionally cleans up the remote counterpart)
+
+### Refresh
+
+- **Prefetch on startup**: Branch data loads proactively when the extension activates, with a loading indicator while the first fetch runs.
+- **Automatic & background refresh**: Auto-refreshes on repository changes (commits, checkouts, pushes/fetches) and on a configurable background interval.
 
 ## Settings
 
@@ -45,11 +70,3 @@ The release workflow packages each version and attaches the VSIX package to the 
 | `goodBranchManager.showPrStatus` | `true` | Fetch pull request status from GitHub and show open, merged, or closed PR indicators |
 | `goodBranchManager.promptForPrOnPublish` | `true` | Ask whether to create a GitHub pull request after publishing the checked-out branch |
 
-## Development
-
-```sh
-npm install
-npm run compile   # or: npm run watch
-```
-
-Press `F5` in VS Code to launch an Extension Development Host, or package with `npx @vscode/vsce package` and install the generated `.vsix`.
