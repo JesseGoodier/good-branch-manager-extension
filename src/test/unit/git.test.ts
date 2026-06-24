@@ -120,6 +120,17 @@ suite('Git repository integration', () => {
     assert.strictEqual(commits[0].subject, 'initial');
   });
 
+  test('lists only branch-only commits when a base ref is provided', async () => {
+    const git = new Git(repo.root);
+    runGit(repo.root, ['switch', '-c', 'feature/b']);
+    runGit(repo.root, ['commit', '--allow-empty', '-m', 'feature-only']);
+    const branchOnly = await git.getBranchCommits('feature/b', 10, 'main');
+    assert.strictEqual(branchOnly.length, 1);
+    assert.strictEqual(branchOnly[0].subject, 'feature-only');
+    const full = await git.getBranchCommits('feature/b', 10);
+    assert.strictEqual(full.length, 2);
+  });
+
   test('surfaces git errors with stderr', async () => {
     const git = new Git(repo.root);
     await assert.rejects(

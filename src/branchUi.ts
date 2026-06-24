@@ -7,6 +7,18 @@ export interface SyncStatus {
   iconFile: string;
 }
 
+/** Git ref used as the merge base when listing branch-only commits. Undefined for the default branch. */
+export function resolveBranchBaseRef(branch: Branch, defaultBranch: string): string | undefined {
+  const branchName = branch.isRemote ? branch.shortName : branch.name;
+  if (branchName === defaultBranch) {
+    return undefined;
+  }
+  if (branch.isRemote) {
+    return `${branch.remote}/${defaultBranch}`;
+  }
+  return defaultBranch;
+}
+
 /** True when a local branch points at the same commit as the default branch. */
 export function branchSharesDefaultTip(
   branch: Branch,

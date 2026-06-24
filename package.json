@@ -1,6 +1,6 @@
 {
   "name": "good-branch-manager",
-  "version": "0.2.4",
+  "version": "0.2.5",
   "description": "Simple git branch view: sync status at a glance, branch actions, and GitHub pull requests from the Source Control sidebar.",
   "homepage": "https://github.com/JesseGoodier/good-branch-manager-extension#readme",
   "publisher": "JesseGoodier",
@@ -145,6 +145,11 @@
         "goodBranchManager.promptForPrOnPublish": {
           "default": true,
           "description": "Ask whether to create a GitHub pull request after the checked-out local branch is published for the first time.",
+          "type": "boolean"
+        },
+        "goodBranchManager.showBaseBranchCommits": {
+          "default": false,
+          "description": "When expanding a branch, include commits that already exist on its base branch (the default branch, or the remote default for remote branches). When disabled, only commits unique to that branch are listed.",
           "type": "boolean"
         }
       },
