@@ -1,6 +1,7 @@
 import * as vscode from 'vscode';
 import { Branch, CommitEntry, Git, RemoteRepo, RepoInfo, findRepoRoot } from './git';
 import {
+  branchSharesDefaultTip,
   branchSyncStatus,
   buildBranchContextValue,
   buildBranchDescription,
@@ -283,9 +284,12 @@ export class BranchTreeProvider implements vscode.TreeDataProvider<Node> {
 
     const status = branchSyncStatus(b);
 
+    const sharesDefaultTip = branchSharesDefaultTip(b, node.repo.defaultBranch, node.repo.local);
+
     item.description = buildBranchDescription(b, {
       defaultBranch: node.repo.defaultBranch,
       staleAfterDays: staleDays,
+      localBranches: node.repo.local,
       pr
     });
 
@@ -304,10 +308,16 @@ export class BranchTreeProvider implements vscode.TreeDataProvider<Node> {
     const lines = [
       `**${b.name}**`,
       '',
-      `${status.tooltip}`,
-      `Last commit: ${this.linkedCommit(b)} ${b.committerDateRelative}`,
-      `Last Commit by: ${escapeMarkdown(b.authorName || 'Unknown')}`
+      `${status.tooltip}`
     ];
+    if (sharesDefaultTip) {
+      lines.push('This branch is up to date with the default branch.');
+    } else {
+      lines.push(
+        `Last commit: ${this.linkedCommit(b)} ${b.committerDateRelative}`,
+        `Last Commit by: ${escapeMarkdown(b.authorName || 'Unknown')}`
+      );
+    }
     if (b.upstream) lines.push(`Upstream: ${this.linkedUpstream(b.upstream)}`);
     if (!b.isRemote && b.name === node.repo.defaultBranch) lines.push('Default branch.');
     if (b.merged) lines.push('Already merged into the default branch.');

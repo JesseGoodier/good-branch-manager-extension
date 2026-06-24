@@ -166,6 +166,16 @@ export class Git {
         });
 
     const local = parse(localRaw, false);
+    const defaultTipSha = local.find((b) => b.name === defaultBranch)?.fullSha;
+    for (const branch of local) {
+      if (branch.name === defaultBranch) {
+        branch.merged = false;
+      } else if (branch.merged && defaultTipSha && branch.fullSha === defaultTipSha) {
+        // Fresh branches created from the default branch share its tip and are
+        // technically "--merged", but they have no work of their own yet.
+        branch.merged = false;
+      }
+    }
     const localUpstreams = new Set(local.map((b) => b.upstream).filter(Boolean));
     const remote = parse(remoteRaw ?? '', true).filter(
       // Skip symbolic/container refs like origin or origin/HEAD and remote branches already tracked locally.
