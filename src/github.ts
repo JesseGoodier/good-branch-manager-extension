@@ -18,6 +18,32 @@ export async function getGitHubSession(createIfNone: boolean): Promise<vscode.Au
   return vscode.authentication.getSession('github', ['repo'], { createIfNone });
 }
 
+export function isGitHubAuthError(status: number, message: string): boolean {
+  const lower = message.toLowerCase();
+  return (
+    status === 401 ||
+    lower.includes('bad credentials') ||
+    lower.includes('requires authentication') ||
+    lower.includes('invalid token') ||
+    lower.includes('token is expired')
+  );
+}
+
+/** Prompt the user to sign in again using VS Code's built-in GitHub authentication. */
+export async function promptGitHubSignIn(action: string): Promise<vscode.AuthenticationSession | undefined> {
+  const signIn = 'Sign In to GitHub';
+  const picked = await vscode.window.showWarningMessage(
+    `GitHub authentication failed. Sign in to ${action}?`,
+    signIn
+  );
+  if (picked !== signIn) {
+    return undefined;
+  }
+  return vscode.authentication.getSession('github', ['repo'], {
+    forceNewSession: { detail: `Good Branch Manager needs GitHub access to ${action}.` }
+  });
+}
+
 export interface CreatePrInput {
   title: string;
   body: string;
@@ -44,14 +70,39 @@ export function githubApiBase(repo: RemoteRepo): string {
 }
 
 export async function createPullRequest(repo: RemoteRepo, input: CreatePrInput): Promise<CreatedPr> {
-  const session = await getGitHubSession(true);
+  let session = await getGitHubSession(true);
   if (!session) {
     throw new Error('GitHub sign-in is required to create a pull request.');
   }
+
+  for (let attempt = 0; attempt < 2; attempt++) {
+    const result = await postPullRequest(repo, input, session.accessToken);
+    if (result.ok) {
+      return result.pr;
+    }
+    if (attempt === 0 && isGitHubAuthError(result.status, result.message)) {
+      const refreshed = await promptGitHubSignIn('create pull requests');
+      if (!refreshed) {
+        throw new Error('GitHub sign-in is required to create a pull request.');
+      }
+      session = refreshed;
+      continue;
+    }
+    throw new Error(result.message);
+  }
+
+  throw new Error('GitHub sign-in is required to create a pull request.');
+}
+
+async function postPullRequest(
+  repo: RemoteRepo,
+  input: CreatePrInput,
+  accessToken: string
+): Promise<{ ok: true; pr: CreatedPr } | { ok: false; status: number; message: string }> {
   const res = await fetch(`${githubApiBase(repo)}/repos/${repo.owner}/${repo.repo}/pulls`, {
     method: 'POST',
     headers: {
-      Authorization: `Bearer ${session.accessToken}`,
+      Authorization: `Bearer ${accessToken}`,
       Accept: 'application/vnd.github+json',
       'Content-Type': 'application/json',
       'X-GitHub-Api-Version': '2022-11-28'
@@ -74,10 +125,10 @@ export async function createPullRequest(repo: RemoteRepo, input: CreatePrInput):
     } catch {
       // keep generic message
     }
-    throw new Error(message);
+    return { ok: false, status: res.status, message };
   }
   const json: any = await res.json();
-  return { htmlUrl: json.html_url, number: json.number };
+  return { ok: true, pr: { htmlUrl: json.html_url, number: json.number } };
 }
 
 /** Encode a branch/ref name for use in URL paths, preserving slash separators. */

@@ -7,6 +7,31 @@ export interface SyncStatus {
   iconFile: string;
 }
 
+/** Git ref used as the merge base when listing branch-only commits. Undefined for the default branch. */
+export function resolveBranchBaseRef(branch: Branch, defaultBranch: string): string | undefined {
+  const branchName = branch.isRemote ? branch.shortName : branch.name;
+  if (branchName === defaultBranch) {
+    return undefined;
+  }
+  if (branch.isRemote) {
+    return `${branch.remote}/${defaultBranch}`;
+  }
+  return defaultBranch;
+}
+
+/** True when a local branch points at the same commit as the default branch. */
+export function branchSharesDefaultTip(
+  branch: Branch,
+  defaultBranch: string,
+  localBranches: Branch[]
+): boolean {
+  if (branch.isRemote || branch.name === defaultBranch) {
+    return false;
+  }
+  const defaultRef = localBranches.find((b) => b.name === defaultBranch);
+  return Boolean(defaultRef && branch.fullSha === defaultRef.fullSha);
+}
+
 export function splitRemoteBranch(ref: string): { remote: string; branch: string } {
   const slash = ref.indexOf('/');
   if (slash === -1) {
@@ -110,6 +135,7 @@ export function buildBranchDescription(
   opts: {
     defaultBranch: string;
     staleAfterDays: number;
+    localBranches?: Branch[];
     pr?: PullRequest;
     nowMs?: number;
   }
@@ -117,7 +143,9 @@ export function buildBranchDescription(
   const status = branchSyncStatus(branch);
   const hints: string[] = [status.text, branch.committerDateRelative];
   if (!branch.isRemote && branch.name === opts.defaultBranch) hints.push('default');
-  if (branch.merged) hints.push('merged');
+  if (branch.merged && !branchSharesDefaultTip(branch, opts.defaultBranch, opts.localBranches ?? [])) {
+    hints.push('merged');
+  }
   if (isBranchStale(branch, opts.staleAfterDays, opts.nowMs)) hints.push('stale');
 
   const pr = opts.pr;

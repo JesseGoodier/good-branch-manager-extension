@@ -63,6 +63,23 @@ export interface CommitEntry {
   committerDateRelative: string;
 }
 
+export interface CommitDetails {
+  fullSha: string;
+  shortSha: string;
+  subject: string;
+  body: string;
+  authorName: string;
+  authorEmail: string;
+  authorDate: string;
+  committerName: string;
+  committerEmail: string;
+  committerDate: string;
+  patch: string;
+  filesChanged: number;
+  insertions: number;
+  deletions: number;
+}
+
 export class GitError extends Error {
   constructor(message: string, public readonly stderr: string) {
     super(message);
@@ -166,6 +183,16 @@ export class Git {
         });
 
     const local = parse(localRaw, false);
+    const defaultTipSha = local.find((b) => b.name === defaultBranch)?.fullSha;
+    for (const branch of local) {
+      if (branch.name === defaultBranch) {
+        branch.merged = false;
+      } else if (branch.merged && defaultTipSha && branch.fullSha === defaultTipSha) {
+        // Fresh branches created from the default branch share its tip and are
+        // technically "--merged", but they have no work of their own yet.
+        branch.merged = false;
+      }
+    }
     const localUpstreams = new Set(local.map((b) => b.upstream).filter(Boolean));
     const remote = parse(remoteRaw ?? '', true).filter(
       // Skip symbolic/container refs like origin or origin/HEAD and remote branches already tracked locally.
@@ -238,11 +265,12 @@ export class Git {
     return (out ?? '').split('\n').filter(Boolean);
   }
 
-  async getBranchCommits(ref: string, limit = 30): Promise<CommitEntry[]> {
+  async getBranchCommits(ref: string, limit = 30, base?: string): Promise<CommitEntry[]> {
     // %x00 makes git emit a NUL separator in its output. Pass the literal "%x00" in the
     // format string — an actual NUL byte in an argv entry makes Node's spawn throw.
     const format = ['%H', '%h', '%s', '%an', '%cr', '%ct'].join('%x00');
-    const raw = await this.tryExec(['log', ref, `--format=${format}`, `-${limit}`]);
+    const range = base ? `${base}..${ref}` : ref;
+    const raw = await this.tryExec(['log', range, `--format=${format}`, `-${limit}`]);
     if (!raw) return [];
     return raw
       .split('\n')
@@ -258,6 +286,59 @@ export class Git {
           committerDateUnix: Number(committerDateUnix)
         };
       });
+  }
+
+  async getCommitDetails(sha: string): Promise<CommitDetails | undefined> {
+    const format = ['%H', '%h', '%s', '%b', '%an', '%ae', '%ad', '%cn', '%ce', '%cd'].join('%x00');
+    const header = await this.tryExec(['show', '-s', `--format=${format}`, sha]);
+    if (!header) {
+      return undefined;
+    }
+
+    const [
+      fullSha,
+      shortSha,
+      subject,
+      body,
+      authorName,
+      authorEmail,
+      authorDate,
+      committerName,
+      committerEmail,
+      committerDate
+    ] = header.split(NUL);
+
+    const patch = (await this.tryExec(['show', '--no-color', '-p', '--format=', sha])) ?? '';
+    const numstat = (await this.tryExec(['show', '--numstat', '--format=', sha])) ?? '';
+    let filesChanged = 0;
+    let insertions = 0;
+    let deletions = 0;
+    for (const line of numstat.split('\n').filter(Boolean)) {
+      const [added, removed] = line.split('\t');
+      if (added === '-' || removed === '-') {
+        continue;
+      }
+      filesChanged += 1;
+      insertions += Number(added) || 0;
+      deletions += Number(removed) || 0;
+    }
+
+    return {
+      fullSha,
+      shortSha,
+      subject,
+      body: body.trimEnd(),
+      authorName,
+      authorEmail,
+      authorDate,
+      committerName,
+      committerEmail,
+      committerDate,
+      patch,
+      filesChanged,
+      insertions,
+      deletions
+    };
   }
 }
 

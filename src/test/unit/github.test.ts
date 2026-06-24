@@ -1,6 +1,6 @@
 import assert from 'assert';
 import { RemoteRepo } from '../../git';
-import { branchUrl, commitUrl, githubApiBase } from '../../github';
+import { branchUrl, commitUrl, githubApiBase, isGitHubAuthError } from '../../github';
 
 function repo(provider: RemoteRepo['provider'], overrides: Partial<RemoteRepo> = {}): RemoteRepo {
   return {
@@ -11,6 +11,15 @@ function repo(provider: RemoteRepo['provider'], overrides: Partial<RemoteRepo> =
     ...overrides
   };
 }
+
+suite('isGitHubAuthError', () => {
+  test('detects common GitHub authentication failures', () => {
+    assert.strictEqual(isGitHubAuthError(401, 'Bad credentials'), true);
+    assert.strictEqual(isGitHubAuthError(403, 'Bad credentials'), true);
+    assert.strictEqual(isGitHubAuthError(401, 'Requires authentication'), true);
+    assert.strictEqual(isGitHubAuthError(422, 'Validation Failed'), false);
+  });
+});
 
 suite('githubApiBase', () => {
   test('routes GitHub.com and enterprise API hosts', () => {

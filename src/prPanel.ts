@@ -1,6 +1,6 @@
 import * as vscode from 'vscode';
 import { Branch, Git } from './git';
-import { CreatePrInput, RemoteRepo as GitHubRepo, createPullRequest } from './github';
+import { CreatePrInput, RemoteRepo as GitHubRepo, createPullRequest, isGitHubAuthError, promptGitHubSignIn } from './github';
 
 interface PrDefaults {
   head: string;
@@ -48,6 +48,16 @@ export async function openCreatePrPanel(
       panel.dispose();
       return;
     }
+    if (msg.type === 'signIn') {
+      const session = await promptGitHubSignIn('create pull requests');
+      if (session) {
+        panel.webview.postMessage({
+          type: 'authOk',
+          message: 'Signed in to GitHub. Click Create Pull Request to try again.'
+        });
+      }
+      return;
+    }
     if (msg.type !== 'submit') {
       return;
     }
@@ -89,7 +99,16 @@ export async function openCreatePrPanel(
         }
       }
     } catch (err: any) {
-      panel.webview.postMessage({ type: 'error', message: err?.message ?? String(err) });
+      const message = err?.message ?? String(err);
+      const authRequired =
+        isGitHubAuthError(0, message) || message.includes('GitHub sign-in is required');
+      panel.webview.postMessage({
+        type: 'error',
+        message: authRequired
+          ? 'GitHub authentication failed. Sign in and try again.'
+          : message,
+        authRequired
+      });
     }
   });
 }
@@ -167,6 +186,16 @@ function renderHtml(webview: vscode.Webview, d: PrDefaults, repo: GitHubRepo): s
     background: var(--vscode-inputValidation-errorBackground);
     border: 1px solid var(--vscode-inputValidation-errorBorder);
   }
+  .error-actions { margin-top: 10px; }
+  .notice {
+    display: none;
+    margin-top: 14px;
+    padding: 8px 12px;
+    border-radius: 3px;
+    background: var(--vscode-textBlockQuote-background);
+    border: 1px solid var(--vscode-panel-border, transparent);
+    color: var(--vscode-descriptionForeground);
+  }
 </style>
 </head>
 <body>
@@ -189,9 +218,11 @@ function renderHtml(webview: vscode.Webview, d: PrDefaults, repo: GitHubRepo): s
   </div>
 
   <div id="error" class="error"></div>
+  <div id="notice" class="notice"></div>
 
   <div class="actions">
     <button id="create" class="primary">Create Pull Request</button>
+    <button id="sign-in" class="secondary" style="display:none;">Sign In to GitHub</button>
     <button id="cancel" class="secondary">Cancel</button>
   </div>
 
@@ -208,17 +239,29 @@ function renderHtml(webview: vscode.Webview, d: PrDefaults, repo: GitHubRepo): s
     });
   });
   el('cancel').addEventListener('click', () => vscode.postMessage({ type: 'cancel' }));
+  el('sign-in').addEventListener('click', () => vscode.postMessage({ type: 'signIn' }));
   window.addEventListener('message', (e) => {
     const msg = e.data;
     if (msg.type === 'busy') {
       el('create').disabled = true;
       el('create').textContent = 'Creating...';
       el('error').style.display = 'none';
+      el('notice').style.display = 'none';
+      el('sign-in').style.display = 'none';
     } else if (msg.type === 'error') {
       el('create').disabled = false;
       el('create').textContent = 'Create Pull Request';
       el('error').textContent = msg.message;
       el('error').style.display = 'block';
+      el('notice').style.display = 'none';
+      el('sign-in').style.display = msg.authRequired ? 'inline-block' : 'none';
+    } else if (msg.type === 'authOk') {
+      el('create').disabled = false;
+      el('create').textContent = 'Create Pull Request';
+      el('error').style.display = 'none';
+      el('sign-in').style.display = 'none';
+      el('notice').textContent = msg.message;
+      el('notice').style.display = 'block';
     }
   });
 </script>

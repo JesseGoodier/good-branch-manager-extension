@@ -1,16 +1,18 @@
 import * as vscode from 'vscode';
 import { Branch, CommitEntry, Git, RemoteRepo, RepoInfo, findRepoRoot } from './git';
 import {
+  branchSharesDefaultTip,
   branchSyncStatus,
   buildBranchContextValue,
   buildBranchDescription,
   escapeMarkdown,
   isBranchStale,
+  resolveBranchBaseRef,
   splitRemoteBranch
 } from './branchUi';
 import { PullRequest, branchUrl, commitUrl, listPullRequests, resolveRemoteRepo } from './github';
 
-type Node = GroupNode | BranchNode | CommitNode | LoadingNode;
+type Node = GroupNode | BranchNode | CommitNode | LoadingNode | InfoNode;
 
 export class GroupNode {
   constructor(public readonly kind: 'local' | 'remote', public readonly branches: Branch[]) {}
@@ -32,6 +34,10 @@ class LoadingNode {
   constructor(public readonly message: string) {}
 }
 
+class InfoNode {
+  constructor(public readonly message: string) {}
+}
+
 export class BranchTreeProvider implements vscode.TreeDataProvider<Node> {
   private readonly _onDidChangeTreeData = new vscode.EventEmitter<void>();
   readonly onDidChangeTreeData = this._onDidChangeTreeData.event;
@@ -41,7 +47,7 @@ export class BranchTreeProvider implements vscode.TreeDataProvider<Node> {
   private rootNodes: Node[] = [];
   private prMap = new Map<string, PullRequest>();
   private remoteRepos = new Map<string, RemoteRepo>();
-  private commitCache = new Map<string, CommitNode[]>();
+  private commitCache = new Map<string, Node[]>();
   private lastFetchTime = 0;
   private fetchPromise: Promise<void> | null = null;
   private isForceRefresh = false;
@@ -93,7 +99,7 @@ export class BranchTreeProvider implements vscode.TreeDataProvider<Node> {
     if (element instanceof BranchNode) {
       return this.getBranchCommits(element);
     }
-    if (element instanceof CommitNode || element instanceof LoadingNode) {
+    if (element instanceof CommitNode || element instanceof LoadingNode || element instanceof InfoNode) {
       return [];
     }
 
@@ -165,9 +171,14 @@ export class BranchTreeProvider implements vscode.TreeDataProvider<Node> {
     this.triggerPrFetch(this.git, force);
   }
 
-  private async getBranchCommits(node: BranchNode): Promise<CommitNode[]> {
-    const key = node.branch.name;
-    const cached = this.commitCache.get(key);
+  private async getBranchCommits(node: BranchNode): Promise<Node[]> {
+    const showBase = vscode.workspace
+      .getConfiguration('goodBranchManager')
+      .get<boolean>('showBaseBranchCommits', false);
+    const baseRef = resolveBranchBaseRef(node.branch, node.repo.defaultBranch);
+    const branchOnly = !showBase && baseRef !== undefined;
+    const cacheKey = `${node.branch.name}:${branchOnly}`;
+    const cached = this.commitCache.get(cacheKey);
     if (cached) {
       return cached;
     }
@@ -178,9 +189,12 @@ export class BranchTreeProvider implements vscode.TreeDataProvider<Node> {
     }
 
     try {
-      const commits = await git.getBranchCommits(node.branch.name);
-      const items = commits.map((commit) => new CommitNode(commit, node.branch, node.repo));
-      this.commitCache.set(key, items);
+      const commits = await git.getBranchCommits(node.branch.name, 30, branchOnly ? baseRef : undefined);
+      const items: Node[] =
+        commits.length === 0 && branchOnly
+          ? [new InfoNode('No commits on this branch yet.')]
+          : commits.map((commit) => new CommitNode(commit, node.branch, node.repo));
+      this.commitCache.set(cacheKey, items);
       return items;
     } catch (err) {
       console.error('goodBranchManager: failed to list commits', err);
@@ -249,6 +263,11 @@ export class BranchTreeProvider implements vscode.TreeDataProvider<Node> {
       item.iconPath = new vscode.ThemeIcon('loading~spin');
       return item;
     }
+    if (element instanceof InfoNode) {
+      const item = new vscode.TreeItem(element.message, vscode.TreeItemCollapsibleState.None);
+      item.iconPath = new vscode.ThemeIcon('info');
+      return item;
+    }
     if (element instanceof GroupNode) {
       const item = new vscode.TreeItem(
         element.kind === 'local' ? 'Local' : 'Remote',
@@ -283,9 +302,12 @@ export class BranchTreeProvider implements vscode.TreeDataProvider<Node> {
 
     const status = branchSyncStatus(b);
 
+    const sharesDefaultTip = branchSharesDefaultTip(b, node.repo.defaultBranch, node.repo.local);
+
     item.description = buildBranchDescription(b, {
       defaultBranch: node.repo.defaultBranch,
       staleAfterDays: staleDays,
+      localBranches: node.repo.local,
       pr
     });
 
@@ -304,10 +326,16 @@ export class BranchTreeProvider implements vscode.TreeDataProvider<Node> {
     const lines = [
       `**${b.name}**`,
       '',
-      `${status.tooltip}`,
-      `Last commit: ${this.linkedCommit(b)} ${b.committerDateRelative}`,
-      `Last Commit by: ${escapeMarkdown(b.authorName || 'Unknown')}`
+      `${status.tooltip}`
     ];
+    if (sharesDefaultTip) {
+      lines.push('This branch is up to date with the default branch.');
+    } else {
+      lines.push(
+        `Last commit: ${this.linkedCommit(b)} ${b.committerDateRelative}`,
+        `Last Commit by: ${escapeMarkdown(b.authorName || 'Unknown')}`
+      );
+    }
     if (b.upstream) lines.push(`Upstream: ${this.linkedUpstream(b.upstream)}`);
     if (!b.isRemote && b.name === node.repo.defaultBranch) lines.push('Default branch.');
     if (b.merged) lines.push('Already merged into the default branch.');
@@ -340,14 +368,11 @@ export class BranchTreeProvider implements vscode.TreeDataProvider<Node> {
     item.tooltip.isTrusted = true;
     item.contextValue = 'commit';
 
-    const remoteRepo = this.remoteRepoForBranch(node.branch);
-    if (remoteRepo) {
-      item.command = {
-        command: 'goodBranchManager.openCommit',
-        title: 'Open Commit',
-        arguments: [node]
-      };
-    }
+    item.command = {
+      command: 'goodBranchManager.openCommit',
+      title: 'Show Commit',
+      arguments: [node]
+    };
 
     return item;
   }

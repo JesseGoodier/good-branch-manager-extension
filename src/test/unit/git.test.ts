@@ -99,6 +99,18 @@ suite('Git repository integration', () => {
     assert.strictEqual(info.defaultBranch, 'main');
   });
 
+  test('does not mark fresh branches at the default tip as merged', async () => {
+    const git = new Git(repo.root);
+    runGit(repo.root, ['switch', '-c', 'screenshots']);
+    const info = await git.getBranches();
+    const screenshots = info.local.find((branch) => branch.name === 'screenshots');
+    const main = info.local.find((branch) => branch.name === 'main');
+    assert.ok(screenshots);
+    assert.ok(main);
+    assert.strictEqual(screenshots!.fullSha, main!.fullSha);
+    assert.strictEqual(screenshots!.merged, false);
+  });
+
   test('reads commit subjects and branch history', async () => {
     const git = new Git(repo.root);
     const subject = await git.getLastCommitSubject('main');
@@ -106,6 +118,29 @@ suite('Git repository integration', () => {
     const commits = await git.getBranchCommits('main', 5);
     assert.strictEqual(commits.length, 1);
     assert.strictEqual(commits[0].subject, 'initial');
+  });
+
+  test('lists only branch-only commits when a base ref is provided', async () => {
+    const git = new Git(repo.root);
+    runGit(repo.root, ['switch', '-c', 'feature/b']);
+    runGit(repo.root, ['commit', '--allow-empty', '-m', 'feature-only']);
+    const branchOnly = await git.getBranchCommits('feature/b', 10, 'main');
+    assert.strictEqual(branchOnly.length, 1);
+    assert.strictEqual(branchOnly[0].subject, 'feature-only');
+    const full = await git.getBranchCommits('feature/b', 10);
+    assert.strictEqual(full.length, 2);
+  });
+
+  test('loads commit details and patch', async () => {
+    const git = new Git(repo.root);
+    const info = await git.getBranches();
+    const main = info.local.find((branch) => branch.name === 'main');
+    assert.ok(main);
+    const details = await git.getCommitDetails(main!.fullSha);
+    assert.ok(details);
+    assert.strictEqual(details!.subject, 'initial');
+    assert.strictEqual(details!.authorName, 'Test User');
+    assert.strictEqual(typeof details!.patch, 'string');
   });
 
   test('surfaces git errors with stderr', async () => {
