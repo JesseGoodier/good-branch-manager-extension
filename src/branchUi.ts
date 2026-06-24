@@ -195,3 +195,24 @@ export function buildBranchDescription(
 
   return hints.filter(Boolean).join(' · ');
 }
+
+/** SVG icon filename for a branch row (PR status takes precedence over sync status). */
+export function resolveBranchIconFile(
+  branch: Branch,
+  opts: { defaultBranch: string; localBranches?: Branch[]; pr?: PullRequest }
+): string {
+  const pr = opts.pr;
+  if (pr && !branch.isCurrent) {
+    if (pr.state === 'open') {
+      return 'git-pull-request-green';
+    }
+    if (pr.mergedAt) {
+      return 'git-merge-purple';
+    }
+    return 'git-pull-request-closed-red';
+  }
+  if (isBranchMergedDisplay(branch, opts) && !branch.isCurrent) {
+    return 'git-merge-purple';
+  }
+  return branchSyncStatus(branch).iconFile;
+}

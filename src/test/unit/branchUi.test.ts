@@ -6,12 +6,27 @@ import {
   buildBranchDescription,
   buildMergeStatusTooltip,
   escapeMarkdown,
+  formatMergedAt,
   isBranchMergedDisplay,
   isBranchStale,
   resolveBranchBaseRef,
+  resolveBranchIconFile,
   splitRemoteBranch
 } from '../../branchUi';
 import { sampleBranch } from '../helpers/gitRepo';
+
+function samplePr(overrides: Partial<import('../../github').PullRequest> = {}): import('../../github').PullRequest {
+  return {
+    number: 7,
+    title: 'Feature',
+    state: 'closed',
+    mergedAt: null,
+    mergedBy: null,
+    htmlUrl: 'https://github.com/example/pr/7',
+    headRef: 'feature/x',
+    ...overrides
+  };
+}
 
 suite('branchUi helpers', () => {
   test('splitRemoteBranch handles remote prefixes', () => {
@@ -217,5 +232,151 @@ suite('branchUi helpers', () => {
     assert.ok(line);
     assert.match(line!, /Merged into main/);
     assert.match(line!, /octocat/);
+  });
+});
+
+suite('branch merge display', () => {
+  const main = sampleBranch({
+    name: 'main',
+    fullSha: 'sha-main',
+    sha: 'sha-mai',
+    upstream: undefined
+  });
+
+  test('resolveBranchIconFile uses merge icon for git-detected merges', () => {
+    const merged = sampleBranch({
+      name: 'feature/done',
+      fullSha: 'sha-old',
+      sha: 'sha-old',
+      merged: true
+    });
+    assert.strictEqual(
+      resolveBranchIconFile(merged, { defaultBranch: 'main', localBranches: [main, merged] }),
+      'git-merge-purple'
+    );
+  });
+
+  test('resolveBranchIconFile uses merge icon for PR merges at the default tip', () => {
+    const atTip = sampleBranch({
+      name: 'feature/x',
+      fullSha: 'sha-main',
+      sha: 'sha-mai',
+      merged: false
+    });
+    assert.strictEqual(
+      resolveBranchIconFile(atTip, {
+        defaultBranch: 'main',
+        localBranches: [main, atTip],
+        pr: samplePr({ mergedAt: '2026-06-01T12:00:00Z', mergedBy: 'octocat' })
+      }),
+      'git-merge-purple'
+    );
+  });
+
+  test('resolveBranchIconFile keeps sync icon for fresh branches at the default tip', () => {
+    const fresh = sampleBranch({
+      name: 'screenshots',
+      fullSha: 'sha-main',
+      sha: 'sha-mai',
+      merged: false
+    });
+    assert.strictEqual(
+      resolveBranchIconFile(fresh, { defaultBranch: 'main', localBranches: [main, fresh] }),
+      'cloud-blue'
+    );
+  });
+
+  test('resolveBranchIconFile prefers open PR icon over git merge state', () => {
+    const branch = sampleBranch({ merged: true });
+    assert.strictEqual(
+      resolveBranchIconFile(branch, {
+        defaultBranch: 'main',
+        localBranches: [main, branch],
+        pr: samplePr({ state: 'open', mergedAt: null })
+      }),
+      'git-pull-request-green'
+    );
+  });
+
+  test('resolveBranchIconFile uses closed PR icon when PR was not merged', () => {
+    const branch = sampleBranch();
+    assert.strictEqual(
+      resolveBranchIconFile(branch, {
+        defaultBranch: 'main',
+        pr: samplePr({ state: 'closed', mergedAt: null })
+      }),
+      'git-pull-request-closed-red'
+    );
+  });
+
+  test('resolveBranchIconFile uses current-branch icon even when PR is merged', () => {
+    const current = sampleBranch({ isCurrent: true });
+    assert.strictEqual(
+      resolveBranchIconFile(current, {
+        defaultBranch: 'main',
+        pr: samplePr({ mergedAt: '2026-06-01T12:00:00Z' })
+      }),
+      'check-green'
+    );
+  });
+
+  test('isBranchMergedDisplay detects git merges that are not at the default tip', () => {
+    const merged = sampleBranch({
+      name: 'feature/done',
+      fullSha: 'sha-old',
+      merged: true
+    });
+    assert.strictEqual(
+      isBranchMergedDisplay(merged, { defaultBranch: 'main', localBranches: [main, merged] }),
+      true
+    );
+  });
+
+  test('buildBranchDescription shows merged hint for git-detected merges', () => {
+    const merged = sampleBranch({
+      name: 'feature/done',
+      fullSha: 'sha-old',
+      merged: true,
+      committerDateRelative: '3 days ago'
+    });
+    const description = buildBranchDescription(merged, {
+      defaultBranch: 'main',
+      staleAfterDays: 10,
+      localBranches: [main, merged]
+    });
+    assert.match(description, /merged/);
+  });
+
+  test('buildBranchDescription shows merged hint for PR merges at the default tip', () => {
+    const atTip = sampleBranch({
+      name: 'feature/x',
+      fullSha: 'sha-main',
+      sha: 'sha-mai',
+      merged: false,
+      committerDateRelative: '1 day ago'
+    });
+    const description = buildBranchDescription(atTip, {
+      defaultBranch: 'main',
+      staleAfterDays: 10,
+      localBranches: [main, atTip],
+      pr: samplePr({ mergedAt: '2026-06-01T12:00:00Z', mergedBy: 'octocat' })
+    });
+    assert.match(description, /merged/);
+    assert.match(description, /PR #7 \(merged\)/);
+  });
+
+  test('buildMergeStatusTooltip falls back to git-only message without PR data', () => {
+    assert.strictEqual(buildMergeStatusTooltip('main', { gitMerged: true }), 'Already merged into main.');
+  });
+
+  test('buildMergeStatusTooltip uses Unknown when mergedBy is missing', () => {
+    const line = buildMergeStatusTooltip('main', {
+      pr: samplePr({ mergedAt: '2026-06-01T12:00:00Z', mergedBy: null })
+    });
+    assert.match(line!, /Unknown/);
+  });
+
+  test('formatMergedAt returns the original string for invalid dates', () => {
+    assert.strictEqual(formatMergedAt('not-a-date'), 'not-a-date');
   });
 });

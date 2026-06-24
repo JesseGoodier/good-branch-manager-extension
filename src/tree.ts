@@ -10,6 +10,7 @@ import {
   isBranchMergedDisplay,
   isBranchStale,
   resolveBranchBaseRef,
+  resolveBranchIconFile,
   splitRemoteBranch
 } from './branchUi';
 import { PullRequest, branchUrl, commitUrl, listPullRequests, resolveRemoteRepo } from './github';
@@ -318,19 +319,13 @@ export class BranchTreeProvider implements vscode.TreeDataProvider<Node> {
       pr
     });
 
-    if (pr && !b.isCurrent) {
-      if (pr.state === 'open') {
-        item.iconPath = this.icon('git-pull-request-green');
-      } else if (pr.mergedAt) {
-        item.iconPath = this.icon('git-merge-purple');
-      } else {
-        item.iconPath = this.icon('git-pull-request-closed-red');
-      }
-    } else if (mergedDisplay && !b.isCurrent) {
-      item.iconPath = this.icon('git-merge-purple');
-    } else {
-      item.iconPath = this.icon(status.iconFile);
-    }
+    item.iconPath = this.icon(
+      resolveBranchIconFile(b, {
+        defaultBranch: node.repo.defaultBranch,
+        localBranches: node.repo.local,
+        pr
+      })
+    );
 
     const lines = [
       `**${b.name}**`,
