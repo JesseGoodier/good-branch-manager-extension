@@ -1,5 +1,6 @@
 import assert from 'assert';
 import {
+  branchSharesDefaultTip,
   branchSyncStatus,
   buildBranchContextValue,
   buildBranchDescription,
@@ -53,6 +54,52 @@ suite('branchUi helpers', () => {
       buildBranchContextValue(sampleBranch({ name: 'main', upstream: undefined }), 'main', true),
       'branch-local-default-has-pr'
     );
+  });
+
+  test('branchSharesDefaultTip detects fresh branches', () => {
+    const main = sampleBranch({
+      name: 'main',
+      fullSha: 'sha-main',
+      sha: 'sha-mai',
+      upstream: undefined
+    });
+    const feature = sampleBranch({
+      name: 'feature/new',
+      fullSha: 'sha-main',
+      sha: 'sha-mai'
+    });
+    const diverged = sampleBranch({
+      name: 'feature/old',
+      fullSha: 'sha-other',
+      sha: 'sha-oth'
+    });
+    assert.strictEqual(branchSharesDefaultTip(feature, 'main', [main, feature]), true);
+    assert.strictEqual(branchSharesDefaultTip(diverged, 'main', [main, diverged]), false);
+    assert.strictEqual(branchSharesDefaultTip(main, 'main', [main]), false);
+  });
+
+  test('buildBranchDescription skips merged hint for fresh branches', () => {
+    const main = sampleBranch({
+      name: 'main',
+      fullSha: 'sha-main',
+      sha: 'sha-mai',
+      upstream: undefined,
+      committerDateRelative: '1 hour ago'
+    });
+    const fresh = sampleBranch({
+      name: 'screenshots',
+      fullSha: 'sha-main',
+      sha: 'sha-mai',
+      upstream: undefined,
+      merged: true,
+      committerDateRelative: '1 hour ago'
+    });
+    const description = buildBranchDescription(fresh, {
+      defaultBranch: 'main',
+      staleAfterDays: 10,
+      localBranches: [main, fresh]
+    });
+    assert.doesNotMatch(description, /merged/);
   });
 
   test('buildBranchDescription joins status hints', () => {

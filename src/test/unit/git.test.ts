@@ -99,6 +99,18 @@ suite('Git repository integration', () => {
     assert.strictEqual(info.defaultBranch, 'main');
   });
 
+  test('does not mark fresh branches at the default tip as merged', async () => {
+    const git = new Git(repo.root);
+    runGit(repo.root, ['switch', '-c', 'screenshots']);
+    const info = await git.getBranches();
+    const screenshots = info.local.find((branch) => branch.name === 'screenshots');
+    const main = info.local.find((branch) => branch.name === 'main');
+    assert.ok(screenshots);
+    assert.ok(main);
+    assert.strictEqual(screenshots!.fullSha, main!.fullSha);
+    assert.strictEqual(screenshots!.merged, false);
+  });
+
   test('reads commit subjects and branch history', async () => {
     const git = new Git(repo.root);
     const subject = await git.getLastCommitSubject('main');
