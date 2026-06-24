@@ -19,6 +19,40 @@ export function resolveBranchBaseRef(branch: Branch, defaultBranch: string): str
   return defaultBranch;
 }
 
+/** True when merge status should be shown (PR merge or git --merged, excluding fresh default-tip branches). */
+export function isBranchMergedDisplay(
+  branch: Branch,
+  opts: { defaultBranch: string; localBranches?: Branch[]; pr?: PullRequest }
+): boolean {
+  if (opts.pr?.mergedAt) {
+    return true;
+  }
+  return (
+    branch.merged &&
+    !branchSharesDefaultTip(branch, opts.defaultBranch, opts.localBranches ?? [])
+  );
+}
+
+export function formatMergedAt(mergedAt: string): string {
+  const date = new Date(mergedAt);
+  return Number.isNaN(date.getTime()) ? mergedAt : date.toLocaleString();
+}
+
+export function buildMergeStatusTooltip(
+  defaultBranch: string,
+  opts: { pr?: PullRequest; gitMerged?: boolean }
+): string | undefined {
+  const pr = opts.pr;
+  if (pr?.mergedAt) {
+    const who = pr.mergedBy ? escapeMarkdown(pr.mergedBy) : 'Unknown';
+    return `Merged into ${defaultBranch} by ${who} on ${formatMergedAt(pr.mergedAt)}.`;
+  }
+  if (opts.gitMerged) {
+    return `Already merged into ${defaultBranch}.`;
+  }
+  return undefined;
+}
+
 /** True when a local branch points at the same commit as the default branch. */
 export function branchSharesDefaultTip(
   branch: Branch,
@@ -143,7 +177,7 @@ export function buildBranchDescription(
   const status = branchSyncStatus(branch);
   const hints: string[] = [status.text, branch.committerDateRelative];
   if (!branch.isRemote && branch.name === opts.defaultBranch) hints.push('default');
-  if (branch.merged && !branchSharesDefaultTip(branch, opts.defaultBranch, opts.localBranches ?? [])) {
+  if (isBranchMergedDisplay(branch, opts)) {
     hints.push('merged');
   }
   if (isBranchStale(branch, opts.staleAfterDays, opts.nowMs)) hints.push('stale');
@@ -160,4 +194,25 @@ export function buildBranchDescription(
   }
 
   return hints.filter(Boolean).join(' · ');
+}
+
+/** SVG icon filename for a branch row (PR status takes precedence over sync status). */
+export function resolveBranchIconFile(
+  branch: Branch,
+  opts: { defaultBranch: string; localBranches?: Branch[]; pr?: PullRequest }
+): string {
+  const pr = opts.pr;
+  if (pr && !branch.isCurrent) {
+    if (pr.state === 'open') {
+      return 'git-pull-request-green';
+    }
+    if (pr.mergedAt) {
+      return 'git-merge-purple';
+    }
+    return 'git-pull-request-closed-red';
+  }
+  if (isBranchMergedDisplay(branch, opts) && !branch.isCurrent) {
+    return 'git-merge-purple';
+  }
+  return branchSyncStatus(branch).iconFile;
 }

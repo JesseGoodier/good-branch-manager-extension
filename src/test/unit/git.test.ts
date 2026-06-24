@@ -151,3 +151,32 @@ suite('Git repository integration', () => {
     );
   });
 });
+
+suite('Git merged branch detection', () => {
+  let repo: ReturnType<typeof createTestRepo>;
+
+  suiteSetup(() => {
+    repo = createTestRepo();
+    runGit(repo.root, ['branch', '-M', 'main']);
+    runGit(repo.root, ['switch', '-c', 'feature/merged']);
+    runGit(repo.root, ['commit', '--allow-empty', '-m', 'feature work']);
+    runGit(repo.root, ['switch', 'main']);
+    runGit(repo.root, ['commit', '--allow-empty', '-m', 'main moved on']);
+    runGit(repo.root, ['merge', 'feature/merged', '-m', 'merge feature']);
+  });
+
+  suiteTeardown(() => {
+    repo.cleanup();
+  });
+
+  test('marks merged feature branches that still point at their old tip', async () => {
+    const git = new Git(repo.root);
+    const info = await git.getBranches();
+    const merged = info.local.find((branch) => branch.name === 'feature/merged');
+    const main = info.local.find((branch) => branch.name === 'main');
+    assert.ok(merged);
+    assert.ok(main);
+    assert.notStrictEqual(merged!.fullSha, main!.fullSha);
+    assert.strictEqual(merged!.merged, true);
+  });
+});

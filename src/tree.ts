@@ -5,9 +5,12 @@ import {
   branchSyncStatus,
   buildBranchContextValue,
   buildBranchDescription,
+  buildMergeStatusTooltip,
   escapeMarkdown,
+  isBranchMergedDisplay,
   isBranchStale,
   resolveBranchBaseRef,
+  resolveBranchIconFile,
   splitRemoteBranch
 } from './branchUi';
 import { PullRequest, branchUrl, commitUrl, listPullRequests, resolveRemoteRepo } from './github';
@@ -303,6 +306,11 @@ export class BranchTreeProvider implements vscode.TreeDataProvider<Node> {
     const status = branchSyncStatus(b);
 
     const sharesDefaultTip = branchSharesDefaultTip(b, node.repo.defaultBranch, node.repo.local);
+    const mergedDisplay = isBranchMergedDisplay(b, {
+      defaultBranch: node.repo.defaultBranch,
+      localBranches: node.repo.local,
+      pr
+    });
 
     item.description = buildBranchDescription(b, {
       defaultBranch: node.repo.defaultBranch,
@@ -311,17 +319,13 @@ export class BranchTreeProvider implements vscode.TreeDataProvider<Node> {
       pr
     });
 
-    if (pr && !b.isCurrent) {
-      if (pr.state === 'open') {
-        item.iconPath = this.icon('git-pull-request-green');
-      } else if (pr.mergedAt) {
-        item.iconPath = this.icon('git-merge-purple');
-      } else {
-        item.iconPath = this.icon('git-pull-request-closed-red');
-      }
-    } else {
-      item.iconPath = this.icon(status.iconFile);
-    }
+    item.iconPath = this.icon(
+      resolveBranchIconFile(b, {
+        defaultBranch: node.repo.defaultBranch,
+        localBranches: node.repo.local,
+        pr
+      })
+    );
 
     const lines = [
       `**${b.name}**`,
@@ -338,7 +342,11 @@ export class BranchTreeProvider implements vscode.TreeDataProvider<Node> {
     }
     if (b.upstream) lines.push(`Upstream: ${this.linkedUpstream(b.upstream)}`);
     if (!b.isRemote && b.name === node.repo.defaultBranch) lines.push('Default branch.');
-    if (b.merged) lines.push('Already merged into the default branch.');
+    const mergeLine = buildMergeStatusTooltip(node.repo.defaultBranch, {
+      pr,
+      gitMerged: mergedDisplay && !pr?.mergedAt
+    });
+    if (mergeLine) lines.push(mergeLine);
     if (isStale) lines.push(`Stale: no commits in over ${staleDays} days.`);
 
     if (pr) {
