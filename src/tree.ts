@@ -195,7 +195,7 @@ export class BranchTreeProvider implements vscode.TreeDataProvider<Node> {
       const commits = await git.getBranchCommits(node.branch.name, 30, branchOnly ? baseRef : undefined);
       const items: Node[] =
         commits.length === 0 && branchOnly
-          ? [new InfoNode('No commits on this branch yet.')]
+        ? [new InfoNode('No commits/all commits are merged into the base branch.')]
           : commits.map((commit) => new CommitNode(commit, node.branch, node.repo));
       this.commitCache.set(cacheKey, items);
       return items;
