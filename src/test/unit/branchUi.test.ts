@@ -53,6 +53,14 @@ suite('branchUi helpers', () => {
       branchSyncStatus(sampleBranch({ ahead: 2, behind: 1 })).text,
       '2↑ 1↓'
     );
+    assert.strictEqual(
+      branchSyncStatus(sampleBranch({ ahead: 2, behind: 1 })).iconFile,
+      'arrow-up-dark-red'
+    );
+    assert.strictEqual(
+      branchSyncStatus(sampleBranch({ ahead: 0, behind: 1 })).iconFile,
+      'arrow-down-dark-red'
+    );
   });
 
   test('isBranchStale respects threshold and current branch', () => {
