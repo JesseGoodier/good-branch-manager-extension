@@ -3,21 +3,9 @@
 A simple branch manager focused on the most common workflows when using git. Lives in the **Source Control** sidebar as a "Branches - GBM" section.
 
 <p>
-  <img src="screenshot.png" width="49%" alt="Branch list" />
-  <img src="screenshot-tooltip.png" width="49%" alt="Branch tooltip" />
+  <img src="screenshot1.png" width="49%" alt="Branch list" />
+  <img src="screenshot2.png" width="49%" alt="Branch tooltip" />
 </p>
-
-## Installation
-
-Download the latest `.vsix` package from the [GitHub Releases](https://github.com/JesseGoodier/good-branch-manager-extension/releases) page, then install it from VS Code by opening the Extensions view, clicking the three-dot menu, selecting "Install from VSIX...", and choosing the downloaded `.vsix` file.
-
-Or install it from the command line:
-
-```sh
-code --install-extension good-branch-manager-<version>.vsix
-```
-
-The release workflow packages each version and attaches the VSIX package to the release.
 
 ## Features
 
@@ -74,3 +62,8 @@ Right-click any branch for management actions:
 | `goodBranchManager.promptForPrOnPublish` | `true` | Ask whether to create a GitHub pull request after publishing the checked-out branch |
 | `goodBranchManager.showBaseBranchCommits` | `false` | When expanding a branch, include commits that already exist on its base branch (the default branch). When disabled, only branch-only commits are listed |
 
+## Installation
+
+The extension is available in the [VS Code Extension Marketplace](https://marketplace.visualstudio.com/items?itemName=JesseGoodier.good-branch-manager) and [Open VSX Registry](https://open-vsx.org/extension/JesseGoodier/good-branch-manager).
+
+Alternatively, you can download the latest `.vsix` package from the [GitHub Releases](https://github.com/JesseGoodier/good-branch-manager-extension/releases) page, then install it from VS Code by opening the Extensions view, clicking the three-dot menu, selecting "Install from VSIX...", and choosing the downloaded `.vsix` file.

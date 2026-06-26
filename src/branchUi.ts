@@ -142,7 +142,7 @@ export function branchSyncStatus(branch: Branch): SyncStatus {
   return {
     text,
     tooltip: `Out of sync with ${branch.upstream}: ${text}.`,
-    iconFile: branch.ahead > 0 ? 'arrow-up-purple' : 'arrow-down-purple'
+    iconFile: branch.ahead > 0 ? 'arrow-up-dark-red' : 'arrow-down-dark-red'
   };
 }
 
