@@ -1,6 +1,6 @@
 import assert from 'assert';
 import { RemoteRepo } from '../../git';
-import { branchUrl, commitUrl, githubApiBase, isGitHubAuthError } from '../../github';
+import { branchUrl, commitUrl, githubApiBase, isGitHubAuthError, repoHomeUrl } from '../../github';
 
 function repo(provider: RemoteRepo['provider'], overrides: Partial<RemoteRepo> = {}): RemoteRepo {
   return {
@@ -78,6 +78,16 @@ suite('commitUrl', () => {
     assert.strictEqual(
       commitUrl(repo('azure', { host: 'dev.azure.com', owner: 'org/project', repo: 'repo' }), sha),
       'https://dev.azure.com/org/project/_git/repo/commit/abc123def456'
+    );
+  });
+});
+
+suite('repoHomeUrl', () => {
+  test('builds provider-specific repository home URLs', () => {
+    assert.strictEqual(repoHomeUrl(repo('github')), 'https://github.com/octocat/Hello-World');
+    assert.strictEqual(
+      repoHomeUrl(repo('azure', { host: 'dev.azure.com', owner: 'org/project', repo: 'repo' })),
+      'https://dev.azure.com/org/project/_git/repo'
     );
   });
 });

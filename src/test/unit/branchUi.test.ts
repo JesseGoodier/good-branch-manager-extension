@@ -5,12 +5,16 @@ import {
   buildBranchContextValue,
   buildBranchDescription,
   buildMergeStatusTooltip,
+  buildRemoteContextValue,
+  buildRemoteDescription,
+  buildRemoteTooltip,
   escapeMarkdown,
   formatMergedAt,
   isBranchMergedDisplay,
   isBranchStale,
   resolveBranchBaseRef,
   resolveBranchIconFile,
+  sortRemoteNames,
   splitRemoteBranch
 } from '../../branchUi';
 import { sampleBranch } from '../helpers/gitRepo';
@@ -386,5 +390,36 @@ suite('branch merge display', () => {
 
   test('formatMergedAt returns the original string for invalid dates', () => {
     assert.strictEqual(formatMergedAt('not-a-date'), 'not-a-date');
+  });
+});
+
+suite('remote display', () => {
+  test('sortRemoteNames keeps origin first', () => {
+    assert.deepStrictEqual(sortRemoteNames(['upstream', 'origin', 'test']), ['origin', 'test', 'upstream']);
+  });
+
+  test('buildRemoteDescription includes repo label and branch count', () => {
+    assert.strictEqual(buildRemoteDescription(0), '0 branches');
+    assert.strictEqual(buildRemoteDescription(1, 'octocat/Hello-World'), 'octocat/Hello-World · 1 branch');
+    assert.strictEqual(buildRemoteDescription(3, 'octocat/Hello-World'), 'octocat/Hello-World · 3 branches');
+  });
+
+  test('buildRemoteTooltip includes URL, default branch, and fetch hint when empty', () => {
+    const tooltip = buildRemoteTooltip({
+      name: 'test',
+      url: 'git@github.com:octocat/Hello-World.git',
+      defaultBranch: 'main',
+      branchCount: 0,
+      repoLabel: 'octocat/Hello-World'
+    });
+    assert.match(tooltip, /\*\*test\*\*/);
+    assert.match(tooltip, /octocat\/Hello/);
+    assert.match(tooltip, /Default branch/);
+    assert.match(tooltip, /Fetch this remote/);
+  });
+
+  test('buildRemoteContextValue marks empty remotes', () => {
+    assert.strictEqual(buildRemoteContextValue(0), 'git-remote-empty');
+    assert.strictEqual(buildRemoteContextValue(2), 'git-remote');
   });
 });

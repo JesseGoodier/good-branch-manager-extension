@@ -136,11 +136,33 @@ function encodeBranchRef(branch: string): string {
   return branch.split('/').map(encodeURIComponent).join('/');
 }
 
-/**
- * Constructs the browser URL for a specific branch, routing by provider.
- * Returns undefined only for Azure DevOps HTTPS remotes where the org cannot be determined
- * (practically, always returns a string for the four named providers + generic fallback).
- */
+/** Browser URL for a remote repository's home page. */
+export function repoHomeUrl(repo: RemoteRepo): string {
+  const base = `https://${repo.host}`;
+
+  switch (repo.provider) {
+    case 'github':
+      return `${base}/${repo.owner}/${repo.repo}`;
+
+    case 'gitlab':
+      return `${base}/${repo.owner}/${repo.repo}`;
+
+    case 'bitbucket':
+      return `${base}/${repo.owner}/${repo.repo}`;
+
+    case 'azure': {
+      const parts = repo.owner.split('/');
+      const org = parts[0];
+      const project = parts.slice(1).join('/') || repo.repo;
+      return `https://dev.azure.com/${org}/${project}/_git/${repo.repo}`;
+    }
+
+    default:
+      return `${base}/${repo.owner}/${repo.repo}`;
+  }
+}
+
+/** Browser URL for a specific branch on a remote repository. */
 export function branchUrl(repo: RemoteRepo, branch: string): string {
   const enc = encodeBranchRef(branch);
   const base = `https://${repo.host}`;
