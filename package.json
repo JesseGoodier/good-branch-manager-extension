@@ -1,6 +1,6 @@
 {
   "name": "good-branch-manager",
-  "version": "0.3.4",
+  "version": "0.3.6",
   "description": "Simple git branch view: sync status at a glance, branch actions, and GitHub pull requests from the Source Control sidebar.",
   "homepage": "https://github.com/JesseGoodier/good-branch-manager-extension#readme",
   "publisher": "JesseGoodier",
@@ -103,6 +103,26 @@
         "category": "Branches",
         "command": "goodBranchManager.openPullRequest",
         "title": "Open Pull Request on GitHub"
+      },
+      {
+        "category": "Branches",
+        "command": "goodBranchManager.fetchRemote",
+        "title": "Fetch from Remote"
+      },
+      {
+        "category": "Branches",
+        "command": "goodBranchManager.openRemoteRepository",
+        "title": "Open Remote Repository"
+      },
+      {
+        "category": "Branches",
+        "command": "goodBranchManager.setRemoteDefault",
+        "title": "Set Default Branch..."
+      },
+      {
+        "category": "Branches",
+        "command": "goodBranchManager.deleteRemote",
+        "title": "Remove Remote..."
       }
     ],
     "configuration": {
@@ -115,7 +135,7 @@
             "local"
           ],
           "enumDescriptions": [
-            "Show local branches and remote branches in two collapsible groups.",
+            "Show local branches and each configured remote in collapsible groups.",
             "Show only local branches."
           ],
           "type": "string"
@@ -216,6 +236,22 @@
         {
           "command": "goodBranchManager.openPullRequest",
           "when": "false"
+        },
+        {
+          "command": "goodBranchManager.fetchRemote",
+          "when": "false"
+        },
+        {
+          "command": "goodBranchManager.openRemoteRepository",
+          "when": "false"
+        },
+        {
+          "command": "goodBranchManager.setRemoteDefault",
+          "when": "false"
+        },
+        {
+          "command": "goodBranchManager.deleteRemote",
+          "when": "false"
         }
       ],
       "view/item/context": [
@@ -288,6 +324,26 @@
           "command": "goodBranchManager.deleteBranch",
           "group": "4_danger@1",
           "when": "view == goodBranchManager.branches && viewItem =~ /branch/ && !(viewItem =~ /current/)"
+        },
+        {
+          "command": "goodBranchManager.fetchRemote",
+          "group": "1_remote@1",
+          "when": "view == goodBranchManager.branches && viewItem =~ /git-remote/"
+        },
+        {
+          "command": "goodBranchManager.openRemoteRepository",
+          "group": "2_remote@1",
+          "when": "view == goodBranchManager.branches && viewItem =~ /git-remote/"
+        },
+        {
+          "command": "goodBranchManager.setRemoteDefault",
+          "group": "3_remote@1",
+          "when": "view == goodBranchManager.branches && viewItem =~ /git-remote/"
+        },
+        {
+          "command": "goodBranchManager.deleteRemote",
+          "group": "4_remote@1",
+          "when": "view == goodBranchManager.branches && viewItem =~ /git-remote/"
         }
       ],
       "view/title": [

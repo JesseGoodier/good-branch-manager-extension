@@ -6,19 +6,33 @@ import {
   buildBranchContextValue,
   buildBranchDescription,
   buildMergeStatusTooltip,
+  buildRemoteContextValue,
+  buildRemoteDescription,
+  buildRemoteTooltip,
   escapeMarkdown,
   isBranchMergedDisplay,
   isBranchStale,
   resolveBranchBaseRef,
   resolveBranchIconFile,
+  sortRemoteNames,
   splitRemoteBranch
 } from './branchUi';
 import { PullRequest, branchUrl, commitUrl, listPullRequests, resolveRemoteRepo } from './github';
 
-type Node = GroupNode | BranchNode | CommitNode | LoadingNode | InfoNode;
+type Node = GroupNode | RemoteNode | BranchNode | CommitNode | LoadingNode | InfoNode;
 
 export class GroupNode {
-  constructor(public readonly kind: 'local' | 'remote', public readonly branches: Branch[]) {}
+  constructor(public readonly branches: Branch[]) {}
+}
+
+export class RemoteNode {
+  constructor(
+    public readonly name: string,
+    public readonly branches: Branch[],
+    public readonly url?: string,
+    public readonly defaultBranch?: string,
+    public readonly repo?: RemoteRepo
+  ) {}
 }
 
 export class BranchNode {
@@ -55,6 +69,7 @@ export class BranchTreeProvider implements vscode.TreeDataProvider<Node> {
   private fetchPromise: Promise<void> | null = null;
   private isForceRefresh = false;
   private loadPromise: Promise<void> | null = null;
+  private loadGeneration = 0;
   private isLoading = false;
   private dataReady = false;
 
@@ -99,6 +114,12 @@ export class BranchTreeProvider implements vscode.TreeDataProvider<Node> {
     if (element instanceof GroupNode) {
       return element.branches.map((b) => new BranchNode(b, this.repoInfo!));
     }
+    if (element instanceof RemoteNode) {
+      if (element.branches.length === 0) {
+        return [new InfoNode('No remote branches yet. Fetch this remote to update refs.')];
+      }
+      return element.branches.map((b) => new BranchNode(b, this.repoInfo!));
+    }
     if (element instanceof BranchNode) {
       return this.getBranchCommits(element);
     }
@@ -122,20 +143,24 @@ export class BranchTreeProvider implements vscode.TreeDataProvider<Node> {
       }
     }
 
+    const gen = ++this.loadGeneration;
     this.isLoading = true;
     if (!this.dataReady) {
       this._onDidChangeTreeData.fire();
     }
 
-    this.loadPromise = this.loadRootNodes(force).finally(() => {
-      this.isLoading = false;
-      this.loadPromise = null;
+    this.loadPromise = this.loadRootNodes(force, gen).finally(() => {
+      if (this.loadGeneration === gen) {
+        this.isLoading = false;
+        this.loadPromise = null;
+      }
     });
     return this.loadPromise;
   }
 
-  private async loadRootNodes(force: boolean): Promise<void> {
+  private async loadRootNodes(force: boolean, gen: number): Promise<void> {
     const root = await findRepoRoot();
+    if (gen !== this.loadGeneration) return;
     if (!root) {
       this.git = undefined;
       this.repoInfo = undefined;
@@ -150,8 +175,11 @@ export class BranchTreeProvider implements vscode.TreeDataProvider<Node> {
     this.git = new Git(root);
     try {
       this.repoInfo = await this.git.getBranches();
+      if (gen !== this.loadGeneration) return;
       await this.refreshRemoteRepos(this.git);
+      if (gen !== this.loadGeneration) return;
     } catch (err) {
+      if (gen !== this.loadGeneration) return;
       console.error('goodBranchManager: failed to list branches', err);
       this.rootNodes = [];
       this.dataReady = true;
@@ -160,12 +188,14 @@ export class BranchTreeProvider implements vscode.TreeDataProvider<Node> {
     }
 
     const scope = vscode.workspace.getConfiguration('goodBranchManager').get<string>('branchScope', 'both');
-    if (scope === 'local' || this.repoInfo.remote.length === 0) {
+    if (scope === 'local') {
       this.rootNodes = this.repoInfo.local.map((b) => new BranchNode(b, this.repoInfo!));
     } else {
+      const remoteNodes = await this.buildRemoteNodes(this.git);
+      if (gen !== this.loadGeneration) return;
       this.rootNodes = [
-        new GroupNode('local', this.repoInfo.local),
-        new GroupNode('remote', this.repoInfo.remote)
+        new GroupNode(this.repoInfo.local),
+        ...remoteNodes
       ];
     }
 
@@ -272,20 +302,75 @@ export class BranchTreeProvider implements vscode.TreeDataProvider<Node> {
       return item;
     }
     if (element instanceof GroupNode) {
-      const item = new vscode.TreeItem(
-        element.kind === 'local' ? 'Local' : 'Remote',
-        element.kind === 'local'
-          ? vscode.TreeItemCollapsibleState.Expanded
-          : vscode.TreeItemCollapsibleState.Collapsed
+      const item = new vscode.TreeItem('Local', vscode.TreeItemCollapsibleState.Expanded);
+      item.contextValue = 'group-local';
+      item.iconPath = this.icon('vm-neutral');
+      item.tooltip = new vscode.MarkdownString(
+        [
+          '**Local branches**',
+          '',
+          `${element.branches.length === 1 ? '1 branch' : `${element.branches.length} branches`} checked out or stored in this repository.`,
+          '',
+          'Expand to view and manage local branches.'
+        ].join('\n\n')
       );
-      item.contextValue = `group-${element.kind}`;
-      item.iconPath = this.icon(element.kind === 'local' ? 'vm-neutral' : 'cloud-neutral');
       return item;
+    }
+    if (element instanceof RemoteNode) {
+      return this.remoteItem(element);
     }
     if (element instanceof CommitNode) {
       return this.commitItem(element);
     }
     return this.branchItem(element);
+  }
+
+  private async buildRemoteNodes(git: Git): Promise<RemoteNode[]> {
+    const remoteNames = sortRemoteNames(await git.listRemotes());
+    const branchesByRemote = new Map<string, Branch[]>();
+    for (const branch of this.repoInfo!.remote) {
+      const remote = branch.remote;
+      if (!remote) continue;
+      const list = branchesByRemote.get(remote) ?? [];
+      list.push(branch);
+      branchesByRemote.set(remote, list);
+    }
+
+    const nodes: RemoteNode[] = [];
+    for (const name of remoteNames) {
+      const url = await git.getRemoteUrl(name);
+      const defaultBranch = await git.getRemoteDefaultBranch(name);
+      nodes.push(
+        new RemoteNode(
+          name,
+          branchesByRemote.get(name) ?? [],
+          url,
+          defaultBranch,
+          this.remoteRepos.get(name)
+        )
+      );
+    }
+    return nodes;
+  }
+
+  private remoteItem(node: RemoteNode): vscode.TreeItem {
+    const repoLabel = node.repo ? `${node.repo.owner}/${node.repo.repo}` : undefined;
+    const item = new vscode.TreeItem(node.name, vscode.TreeItemCollapsibleState.Collapsed);
+    item.id = `remote:${node.name}`;
+    item.description = buildRemoteDescription(node.branches.length, repoLabel);
+    item.iconPath = this.icon('cloud-neutral');
+    item.contextValue = buildRemoteContextValue(node.branches.length);
+    item.tooltip = new vscode.MarkdownString(
+      buildRemoteTooltip({
+        name: node.name,
+        url: node.url,
+        defaultBranch: node.defaultBranch,
+        branchCount: node.branches.length,
+        repoLabel
+      })
+    );
+    item.tooltip.isTrusted = true;
+    return item;
   }
 
   private branchItem(node: BranchNode): vscode.TreeItem {

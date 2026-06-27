@@ -1,7 +1,7 @@
 import * as vscode from 'vscode';
 import { validateBranchName } from './branchNames';
 import { Branch, Git, GitError, RepoInfo } from './git';
-import { branchUrl, resolveGitHubRepo, resolveRemoteRepo } from './github';
+import { branchUrl, repoHomeUrl, resolveGitHubRepo, resolveRemoteRepo } from './github';
 import { openCommitView } from './commitView';
 import { openCreatePrPanel } from './prPanel';
 import {
@@ -11,7 +11,7 @@ import {
   shouldPromptForPublishedBranch,
   snapshotBranches
 } from './publishPrompt';
-import { BranchNode, BranchTreeProvider, CommitNode } from './tree';
+import { BranchNode, BranchTreeProvider, CommitNode, RemoteNode } from './tree';
 
 const PUBLISH_PROMPT_SETTING = 'goodBranchManager.promptForPrOnPublish';
 
@@ -93,6 +93,19 @@ export async function activate(context: vscode.ExtensionContext): Promise<void> 
     context.subscriptions.push(
       vscode.commands.registerCommand(command, async (node?: BranchNode) => {
         if (!(node instanceof BranchNode)) return;
+        try {
+          await handler(node);
+        } catch (err: any) {
+          const detail = err instanceof GitError ? err.stderr || err.message : err?.message ?? String(err);
+          vscode.window.showErrorMessage(`Branches: ${detail}`);
+        }
+      })
+    );
+
+  const registerRemote = (command: string, handler: (node: RemoteNode) => Promise<void>) =>
+    context.subscriptions.push(
+      vscode.commands.registerCommand(command, async (node?: RemoteNode) => {
+        if (!(node instanceof RemoteNode)) return;
         try {
           await handler(node);
         } catch (err: any) {
@@ -357,6 +370,72 @@ export async function activate(context: vscode.ExtensionContext): Promise<void> 
     } else {
       vscode.window.showWarningMessage(`No pull request found for branch ${b.name}.`);
     }
+  });
+
+  registerRemote('goodBranchManager.fetchRemote', async (node) => {
+    const git = requireGit(tree);
+    await git.exec(['fetch', node.name]);
+    tree.refresh();
+    vscode.window.setStatusBarMessage(`Fetched from ${node.name}`, 4000);
+  });
+
+  registerRemote('goodBranchManager.openRemoteRepository', async (node) => {
+    const git = requireGit(tree);
+    const repo = node.repo ?? (await resolveRemoteRepo(git, node.name));
+    if (!repo) {
+      vscode.window.showWarningMessage(`Could not determine the repository URL for remote "${node.name}".`);
+      return;
+    }
+    await vscode.env.openExternal(vscode.Uri.parse(repoHomeUrl(repo)));
+  });
+
+  registerRemote('goodBranchManager.setRemoteDefault', async (node) => {
+    const git = requireGit(tree);
+    const candidates = (await git.getRemoteBranches())
+      .filter((name) => name.startsWith(`${node.name}/`))
+      .map((name) => name.slice(node.name.length + 1))
+      .sort((a, b) => a.localeCompare(b));
+    if (candidates.length === 0) {
+      const manual = await vscode.window.showInputBox({
+        prompt: `Default branch for remote ${node.name}`,
+        placeHolder: 'main',
+        value: node.defaultBranch ?? tree.getRepoInfo()?.defaultBranch ?? 'main',
+        validateInput: (v) => validateBranchName(v)
+      });
+      if (!manual) return;
+      await git.setRemoteDefaultBranch(node.name, manual.trim());
+      tree.refresh();
+      vscode.window.setStatusBarMessage(`Set default branch for ${node.name} to ${manual.trim()}`, 4000);
+      return;
+    }
+
+    const picked = await vscode.window.showQuickPick(
+      candidates.map((branch) => ({
+        label: branch,
+        description: branch === node.defaultBranch ? 'current default' : undefined
+      })),
+      { placeHolder: `Choose default branch for remote ${node.name}` }
+    );
+    if (!picked) return;
+    await git.setRemoteDefaultBranch(node.name, picked.label);
+    tree.refresh();
+    vscode.window.setStatusBarMessage(`Set default branch for ${node.name} to ${picked.label}`, 4000);
+  });
+
+  registerRemote('goodBranchManager.deleteRemote', async (node) => {
+    const git = requireGit(tree);
+    const confirm = await vscode.window.showWarningMessage(
+      `Remove remote "${node.name}"?`,
+      {
+        modal: true,
+        detail: 'This only removes the remote from your local repository. It does not delete the remote repository or its branches.'
+      },
+      'Remove Remote'
+    );
+    if (confirm !== 'Remove Remote') return;
+    await git.deleteRemote(node.name);
+    tree.refresh();
+    vscode.window.setStatusBarMessage(`Removed remote ${node.name}`, 4000);
   });
 }
 

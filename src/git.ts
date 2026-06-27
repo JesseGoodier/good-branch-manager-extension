@@ -203,8 +203,31 @@ export class Git {
     return { root: this.repoRoot, headBranch, defaultBranch, local, remote };
   }
 
+  async listRemotes(): Promise<string[]> {
+    const raw = await this.tryExec(['remote']);
+    return (raw ?? '').split('\n').map((name) => name.trim()).filter(Boolean);
+  }
+
   async getRemoteUrl(remote = 'origin'): Promise<string | undefined> {
     return this.tryExec(['remote', 'get-url', remote]);
+  }
+
+  /** Short branch name that refs/remotes/{remote}/HEAD points at, if configured. */
+  async getRemoteDefaultBranch(remote: string): Promise<string | undefined> {
+    const headRef = await this.tryExec(['symbolic-ref', '--short', `refs/remotes/${remote}/HEAD`]);
+    if (!headRef) {
+      return undefined;
+    }
+    const prefix = `${remote}/`;
+    return headRef.startsWith(prefix) ? headRef.slice(prefix.length) : headRef;
+  }
+
+  async setRemoteDefaultBranch(remote: string, branch: string): Promise<void> {
+    await this.exec(['remote', 'set-head', remote, branch]);
+  }
+
+  async deleteRemote(remote: string): Promise<void> {
+    await this.exec(['remote', 'remove', remote]);
   }
 
   async getRemoteBranches(): Promise<string[]> {

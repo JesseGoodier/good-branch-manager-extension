@@ -216,3 +216,48 @@ export function resolveBranchIconFile(
   }
   return branchSyncStatus(branch).iconFile;
 }
+
+/** Sort remotes with origin first, then alphabetically. */
+export function sortRemoteNames(names: string[]): string[] {
+  return [...names].sort((a, b) => {
+    if (a === 'origin') return -1;
+    if (b === 'origin') return 1;
+    return a.localeCompare(b);
+  });
+}
+
+export function buildRemoteDescription(branchCount: number, repoLabel?: string): string {
+  const countLabel = branchCount === 1 ? '1 branch' : `${branchCount} branches`;
+  return repoLabel ? `${repoLabel} · ${countLabel}` : countLabel;
+}
+
+export function buildRemoteTooltip(opts: {
+  name: string;
+  url?: string;
+  defaultBranch?: string;
+  branchCount: number;
+  repoLabel?: string;
+}): string {
+  const lines = [`**${escapeMarkdown(opts.name)}**`, ''];
+  if (opts.url) {
+    lines.push(`URL: \`${escapeMarkdown(opts.url)}\``);
+  }
+  if (opts.repoLabel) {
+    lines.push(`Repository: ${escapeMarkdown(opts.repoLabel)}`);
+  }
+  if (opts.defaultBranch) {
+    lines.push(`Default branch: \`${escapeMarkdown(opts.defaultBranch)}\``);
+  }
+  if (opts.branchCount === 0) {
+    lines.push('No remote-tracking branches yet. Fetch this remote to update refs.');
+  } else {
+    const branchLabel = opts.branchCount === 1 ? '1 remote branch' : `${opts.branchCount} remote branches`;
+    lines.push(branchLabel);
+  }
+  lines.push('', 'Expand to view branches on this remote.');
+  return lines.join('\n\n');
+}
+
+export function buildRemoteContextValue(branchCount: number): string {
+  return branchCount === 0 ? 'git-remote-empty' : 'git-remote';
+}
