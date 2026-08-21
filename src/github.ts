@@ -14,8 +14,15 @@ export async function resolveGitHubRepo(git: Git, remote = 'origin'): Promise<Re
   return repo?.provider === 'github' ? repo : undefined;
 }
 
+/** Same scopes as GitHub Pull Requests, so we reuse and refresh that session. */
+const GITHUB_AUTH_SCOPES = ['read:user', 'user:email', 'repo', 'workflow'];
+
 export async function getGitHubSession(createIfNone: boolean): Promise<vscode.AuthenticationSession | undefined> {
-  return vscode.authentication.getSession('github', ['repo'], { createIfNone });
+  return vscode.authentication.getSession(
+    'github',
+    GITHUB_AUTH_SCOPES,
+    createIfNone ? { createIfNone: true } : { silent: true }
+  );
 }
 
 export function isGitHubAuthError(status: number, message: string): boolean {
@@ -39,7 +46,7 @@ export async function promptGitHubSignIn(action: string): Promise<vscode.Authent
   if (picked !== signIn) {
     return undefined;
   }
-  return vscode.authentication.getSession('github', ['repo'], {
+  return vscode.authentication.getSession('github', GITHUB_AUTH_SCOPES, {
     forceNewSession: { detail: `Good Branch Manager needs GitHub access to ${action}.` }
   });
 }
