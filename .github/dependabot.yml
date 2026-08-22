@@ -1,0 +1,41 @@
+# Dependabot version updates for this VS Code extension (npm + GitHub Actions).
+# Follows GitHub's recommended pattern: monthly cadence, one grouped PR per
+# ecosystem, and a cooldown so brand-new releases can settle first.
+# Security updates still open immediately and are not delayed by schedule/cooldown.
+# https://docs.github.com/code-security/dependabot/dependabot-version-updates
+version: 2
+updates:
+  - package-ecosystem: npm
+    directory: /
+    schedule:
+      interval: monthly
+    commit-message:
+      prefix: chore
+      prefix-development: chore
+      include: scope
+    cooldown:
+      default-days: 7
+      semver-major-days: 14
+      semver-minor-days: 7
+      semver-patch-days: 3
+    groups:
+      npm:
+        patterns:
+          - "*"
+    open-pull-requests-limit: 5
+    versioning-strategy: increase
+
+  - package-ecosystem: github-actions
+    directory: /
+    schedule:
+      interval: monthly
+    commit-message:
+      prefix: ci
+      include: scope
+    cooldown:
+      default-days: 7
+    groups:
+      github-actions:
+        patterns:
+          - "*"
+    open-pull-requests-limit: 5
