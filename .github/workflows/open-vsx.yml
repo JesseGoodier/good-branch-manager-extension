@@ -20,11 +20,12 @@ jobs:
       - name: Download release asset
         env:
           GH_TOKEN: ${{ github.token }}
+          RELEASE_TAG: ${{ inputs.tag }}
         run: |
-          if [ -n "${{ inputs.tag }}" ]; then
-            gh release download "${{ inputs.tag }}" --pattern "*.vsix" --clobber
+          if [ -n "$RELEASE_TAG" ]; then
+            gh release download "$RELEASE_TAG" --repo "${{ github.repository }}" --pattern "*.vsix" --clobber
           else
-            gh release download --pattern "*.vsix" --clobber
+            gh release download --repo "${{ github.repository }}" --pattern "*.vsix" --clobber
           fi
 
       - name: Publish to Open VSX
