@@ -19,8 +19,66 @@ if ! git diff --quiet || ! git diff --cached --quiet; then
   exit 1
 fi
 
+is_bump() {
+  [[ "$1" == patch || "$1" == minor || "$1" == major ]]
+}
+
+next_version() {
+  node -e '
+    const [major, minor, patch] = require("./package.json").version.split(".").map(Number);
+    const bump = process.argv[1];
+    if (bump === "major") console.log(`${major + 1}.0.0`);
+    else if (bump === "minor") console.log(`${major}.${minor + 1}.0`);
+    else console.log(`${major}.${minor}.${patch + 1}`);
+  ' "$1"
+}
+
+resolve_bump() {
+  local bump="${1:-}"
+  if [[ -z "$bump" && -n "${RELEASE_BUMP:-}" ]]; then
+    bump="$RELEASE_BUMP"
+  fi
+  if [[ -n "$bump" ]]; then
+    if ! is_bump "$bump"; then
+      echo "Bump must be patch, minor, or major (got: $bump)." >&2
+      echo "Usage: $0 [patch|minor|major]" >&2
+      exit 1
+    fi
+    printf '%s\n' "$bump"
+    return
+  fi
+
+  if [[ ! -t 0 ]]; then
+    echo "Specify a version bump: patch, minor, or major." >&2
+    echo "Usage: $0 [patch|minor|major]" >&2
+    exit 1
+  fi
+
+  local current next_patch next_minor next_major choice
+  current="$(node -p "require('./package.json').version")"
+  next_patch="$(next_version patch)"
+  next_minor="$(next_version minor)"
+  next_major="$(next_version major)"
+
+  echo "Current version: $current"
+  echo
+  echo "How should we bump the version?"
+  echo "  patch  →  $next_patch"
+  echo "  minor  →  $next_minor"
+  echo "  major  →  $next_major"
+  echo
+  read -r -p "Bump [patch]: " choice
+  choice="${choice:-patch}"
+  if ! is_bump "$choice"; then
+    echo "Bump must be patch, minor, or major (got: $choice)." >&2
+    exit 1
+  fi
+  printf '%s\n' "$choice"
+}
+
+BUMP="$(resolve_bump "${1:-}")"
 NAME="$(node -p "require('./package.json').name")"
-VERSION="$(node -p "require('./package.json').version")"
+VERSION="$(next_version "$BUMP")"
 TAG="v$VERSION"
 VSIX="$NAME-$VERSION.vsix"
 
@@ -34,11 +92,8 @@ if git ls-remote --exit-code --tags origin "$TAG" >/dev/null 2>&1; then
   exit 1
 fi
 
-echo "Installing dependencies..."
-npm ci
-
-echo "Packaging $NAME $VERSION..."
-npm run package
+echo "Bumping $BUMP ($TAG)..."
+"$ROOT/scripts/bump-and-package.sh" "$BUMP"
 
 if [[ ! -f "$VSIX" ]]; then
   echo "Expected package $VSIX was not created." >&2
@@ -46,8 +101,14 @@ if [[ ! -f "$VSIX" ]]; then
 fi
 
 if ! git diff --quiet || ! git diff --cached --quiet; then
-  echo "Release build changed tracked files. Commit those changes before releasing." >&2
-  exit 1
+  git add -u
+  git commit -m "Release $TAG"
+  echo "Pushing release commit..."
+  if [[ -n "${GITHUB_REF_NAME:-}" ]]; then
+    git push origin "HEAD:${GITHUB_REF_NAME}"
+  else
+    git push origin HEAD
+  fi
 fi
 
 echo "Creating tag $TAG..."
