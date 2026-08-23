@@ -26,6 +26,7 @@ jobs:
       - name: Checkout
         uses: actions/checkout@v7
         with:
+          ssh-key: ${{ secrets.DEPLOY_KEY }}
           fetch-depth: 0
 
       - name: Set up Node.js
