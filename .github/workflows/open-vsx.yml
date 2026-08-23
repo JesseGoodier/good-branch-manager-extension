@@ -1,4 +1,4 @@
-name: Publish to Open VSX
+name: Publish to extension marketplaces
 
 on:
   workflow_dispatch:
@@ -11,23 +11,35 @@ on:
 
 permissions:
   contents: read
+  id-token: write
 
 jobs:
   publish:
-    name: Publish to Open VSX
+    name: Publish to extension marketplaces
     runs-on: ubuntu-latest
     steps:
       - name: Download release asset
         env:
           GH_TOKEN: ${{ github.token }}
+          RELEASE_TAG: ${{ inputs.tag }}
         run: |
-          if [ -n "${{ inputs.tag }}" ]; then
-            gh release download "${{ inputs.tag }}" --pattern "*.vsix" --clobber
+          if [ -n "$RELEASE_TAG" ]; then
+            gh release download "$RELEASE_TAG" --repo "${{ github.repository }}" --pattern "*.vsix" --clobber
           else
-            gh release download --pattern "*.vsix" --clobber
+            gh release download --repo "${{ github.repository }}" --pattern "*.vsix" --clobber
           fi
 
       - name: Publish to Open VSX
         env:
           OVSX_PAT: ${{ secrets.OPEN_VSX }}
         run: npx -y ovsx publish *.vsix -p "$OVSX_PAT"
+
+      # - name: Log in to Azure
+      #   uses: azure/login@v2
+      #   with:
+      #     client-id: ${{ vars.AZURE_CLIENT_ID }}
+      #     tenant-id: ${{ vars.AZURE_TENANT_ID }}
+      #     subscription-id: ${{ vars.AZURE_SUBSCRIPTION_ID }}
+
+      # - name: Publish to Visual Studio Marketplace
+      #   run: npx -y @vscode/vsce publish --packagePath *.vsix --azure-credential
