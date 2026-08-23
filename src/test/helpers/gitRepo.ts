@@ -10,7 +10,7 @@ export interface TestRepo {
 
 export function createTestRepo(): TestRepo {
   const root = fs.mkdtempSync(path.join(os.tmpdir(), 'gbm-test-repo-'));
-  runGit(root, ['init']);
+  runGit(root, ['init', '-b', 'main']);
   runGit(root, ['config', 'user.email', 'test@example.com']);
   runGit(root, ['config', 'user.name', 'Test User']);
   runGit(root, ['commit', '--allow-empty', '-m', 'initial']);
@@ -21,7 +21,11 @@ export function createTestRepo(): TestRepo {
 }
 
 export function runGit(cwd: string, args: string[]): string {
-  return execFileSync('git', args, { cwd, encoding: 'utf8' }).trimEnd();
+  return execFileSync('git', args, {
+    cwd,
+    encoding: 'utf8',
+    stdio: ['ignore', 'pipe', 'pipe']
+  }).trimEnd();
 }
 
 export function sampleBranch(overrides: Partial<import('../../git').Branch> = {}): import('../../git').Branch {

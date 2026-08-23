@@ -16,7 +16,6 @@ async function main(): Promise<void> {
       '--disable-updates',
       '--skip-welcome',
       '--skip-release-notes',
-      '--no-cached-data',
       '--disable-workspace-trust',
       `--extensionTestsPath=${extensionTestsPath}`,
       `--extensionDevelopmentPath=${extensionDevelopmentPath}`,

@@ -48,9 +48,9 @@ package:
 bump bump="patch":
     ./scripts/bump-and-package.sh {{ bump }}
 
-# Tag and publish a GitHub release (requires gh CLI and a clean tree).
-release:
-    npm run release
+# Prompt for patch/minor/major (or pass it), then tag and publish a GitHub release.
+release bump="":
+    ./scripts/release.sh "{{ bump }}"
 
 # Update dependencies within semver ranges and apply audit fixes.
 update-deps:

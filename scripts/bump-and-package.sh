@@ -30,7 +30,7 @@ echo "Building..."
 npm run build
 
 echo "Packaging..."
-npx @vscode/vsce package
+npm run package
 
 echo ""
 echo "Done: $NAME-$VERSION.vsix"
